@@ -20,19 +20,29 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
 
 // Routes
+const authRoutes = require('./routes/authRoutes');
 const sessionRoutes = require('./routes/sessionRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const botRoutes = require('./routes/botRoutes');
 const contactRoutes = require('./routes/contactRoutes');
 const woocommerceRoutes = require('./routes/woocommerceRoutes');
 const importRoutes = require('./routes/importRoutes');
+const apiKeyRoutes = require('./routes/apiKeyRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const adminTestRoutes = require('./routes/adminTestRoutes');
+const setupRoutes = require('./routes/setupRoutes');
 
+app.use('/api/auth', authRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/bots', botRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/woocommerce', woocommerceRoutes);
 app.use('/api/import', importRoutes);
+app.use('/api/api-keys', apiKeyRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/admin-test', adminTestRoutes);
+app.use('/api/admin/setup', setupRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

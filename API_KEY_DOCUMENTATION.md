@@ -1,0 +1,273 @@
+# API Key Authentication Guide
+
+## Overview
+
+The WhatsApp Platform now supports API key authentication, allowing users to access the API programmatically without using JWT tokens. Each user gets a unique API key that can be used to authenticate API requests.
+
+## Features
+
+- 🔑 **Auto-generated API Keys**: API keys are automatically generated when users sign up
+- 🔒 **Secure Format**: Keys use format `wp_live_[64 hex characters]`
+- 🔄 **Regenerate Keys**: Users can regenerate keys if compromised
+- 👀 **Show/Hide Keys**: Keys are masked by default for security
+- 📋 **Easy Copy**: One-click copy to clipboard
+- 🎯 **User-Specific**: Each user's API key is unique and tied to their account
+
+## API Key Format
+
+```
+wp_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2
+```
+
+## Using API Keys
+
+### Option 1: Using `x-api-key` Header
+
+```bash
+curl -H "x-api-key: wp_live_your_api_key_here" \
+  http://localhost:5000/api/sessions
+```
+
+### Option 2: Using `Authorization` Header
+
+```bash
+curl -H "Authorization: Bearer wp_live_your_api_key_here" \
+  http://localhost:5000/api/sessions
+```
+
+### JavaScript/Node.js Example
+
+```javascript
+const axios = require('axios');
+
+const apiKey = 'wp_live_your_api_key_here';
+
+// Option 1: x-api-key header
+axios.get('http://localhost:5000/api/sessions', {
+  headers: {
+    'x-api-key': apiKey
+  }
+});
+
+// Option 2: Authorization header
+axios.get('http://localhost:5000/api/sessions', {
+  headers: {
+    'Authorization': `Bearer ${apiKey}`
+  }
+});
+```
+
+### Python Example
+
+```python
+import requests
+
+api_key = 'wp_live_your_api_key_here'
+
+# Option 1: x-api-key header
+response = requests.get(
+    'http://localhost:5000/api/sessions',
+    headers={'x-api-key': api_key}
+)
+
+# Option 2: Authorization header
+response = requests.get(
+    'http://localhost:5000/api/sessions',
+    headers={'Authorization': f'Bearer {api_key}'}
+)
+```
+
+## Managing API Keys
+
+### In the Frontend (Settings Page)
+
+1. Navigate to **Settings** → **API Keys**
+2. View your current API key (click eye icon to reveal)
+3. Click **Copy** to copy to clipboard
+4. Click **Regenerate Key** to create a new key (old key will be invalidated)
+
+### API Endpoints
+
+#### Get Current User's API Key
+```
+GET /api/api-keys/current
+Authorization: Bearer <JWT_TOKEN>
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "apiKey": "wp_live_abc123...",
+    "hasApiKey": true
+  }
+}
+```
+
+#### Generate/Regenerate API Key
+```
+POST /api/api-keys/generate
+Authorization: Bearer <JWT_TOKEN>
+```
+
+Response:
+```json
+{
+  "success": true,
+  "message": "API key generated successfully",
+  "data": {
+    "apiKey": "wp_live_new_key_123..."
+  }
+}
+```
+
+#### Revoke API Key
+```
+DELETE /api/api-keys/current
+Authorization: Bearer <JWT_TOKEN>
+```
+
+Response:
+```json
+{
+  "success": true,
+  "message": "API key revoked successfully"
+}
+```
+
+## Database Schema
+
+The API keys are stored in the `users` table:
+
+```sql
+-- Column
+api_key TEXT UNIQUE
+
+-- Index for fast lookups
+CREATE INDEX idx_users_api_key ON users(api_key);
+```
+
+## Security Best Practices
+
+### ✅ DO:
+- Store API keys in environment variables
+- Use HTTPS in production
+- Regenerate keys if compromised
+- Keep keys confidential
+- Use different keys for different environments (dev/staging/prod)
+
+### ❌ DON'T:
+- Commit API keys to version control
+- Share keys publicly
+- Hardcode keys in your application code
+- Use the same key across multiple applications
+- Store keys in plain text files
+
+## Implementation Details
+
+### Backend Files
+
+1. **`backend/src/utils/apiKeyGenerator.js`**
+   - Generates secure random API keys
+   - Validates API key format
+
+2. **`backend/src/middleware/apiKeyAuth.js`**
+   - Authenticates requests using API keys
+   - Looks up user by API key
+   - Attaches user info to request
+
+3. **`backend/src/routes/apiKeyRoutes.js`**
+   - GET `/api/api-keys/current` - Get current API key
+   - POST `/api/api-keys/generate` - Generate new key
+   - DELETE `/api/api-keys/current` - Revoke key
+
+4. **`backend/src/routes/authRoutes.js`**
+   - Updated to auto-generate API keys on signup
+   - Generates keys for both email and Google OAuth signups
+
+### Frontend Files
+
+1. **`frontend/src/pages/Settings.js`**
+   - Added "API Keys" tab
+   - Displays API key with show/hide toggle
+   - Copy to clipboard functionality
+   - Regenerate key with confirmation
+   - Usage instructions and examples
+
+## Migration
+
+To add API key support to existing database:
+
+```sql
+-- Add api_key column
+ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key TEXT UNIQUE;
+
+-- Create index
+CREATE INDEX IF NOT EXISTS idx_users_api_key ON users(api_key);
+```
+
+Run the migration in Supabase:
+1. Go to **SQL Editor**
+2. Paste the migration from `backend/database/migrations/add_api_keys_to_users.sql`
+3. Click **RUN**
+
+## Testing API Keys
+
+### 1. Generate API Key
+1. Login to the frontend
+2. Go to Settings → API Keys
+3. Click "Generate API Key"
+4. Copy the key
+
+### 2. Test with cURL
+```bash
+# Test sessions endpoint
+curl -H "x-api-key: YOUR_API_KEY" \
+  http://localhost:5000/api/sessions
+
+# Test bots endpoint
+curl -H "x-api-key: YOUR_API_KEY" \
+  http://localhost:5000/api/bots
+```
+
+### 3. Expected Response
+```json
+{
+  "success": true,
+  "data": [ /* your sessions/bots */ ]
+}
+```
+
+## Troubleshooting
+
+### "API key required" Error
+- Make sure you're including the API key in either `x-api-key` or `Authorization` header
+- Check that the header name is correct (lowercase with hyphens)
+
+### "Invalid API key" Error
+- Verify the API key hasn't been regenerated
+- Check for extra spaces or characters in the key
+- Make sure the key starts with `wp_live_`
+
+### "Invalid API key format" Error
+- API key must match format: `wp_live_[64 hex characters]`
+- Make sure you copied the complete key
+
+## Future Enhancements
+
+- [ ] API key usage tracking
+- [ ] Multiple API keys per user
+- [ ] API key expiration dates
+- [ ] Rate limiting per API key
+- [ ] API key permissions/scopes
+- [ ] Webhook support with API keys
+
+## Support
+
+For issues or questions:
+1. Check the logs in `backend/src/server.js`
+2. Verify database migration completed successfully
+3. Ensure environment variables are set correctly
+4. Test with the provided examples above
+

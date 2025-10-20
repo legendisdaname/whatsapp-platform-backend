@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     phone_number VARCHAR(50),
     status VARCHAR(50) DEFAULT 'disconnected' CHECK (status IN ('disconnected', 'connecting', 'connected', 'qr')),
     qr_code TEXT,
+    last_connected_at TIMESTAMPTZ,
+    last_seen TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

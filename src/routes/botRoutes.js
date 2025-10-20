@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const botService = require('../services/botService');
+const { authMiddleware } = require('../middleware/auth');
+const { checkBlockedMiddleware } = require('../middleware/checkBlocked');
 
 /**
  * @swagger
@@ -25,9 +27,9 @@ const botService = require('../services/botService');
  *       500:
  *         description: Server error
  */
-router.get('/', async (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   try {
-    const bots = await botService.getAllBots();
+    const bots = await botService.getUserBots(req.userId);
     res.json({ success: true, bots });
   } catch (error) {
     res.status(500).json({
@@ -177,7 +179,7 @@ router.get('/:id', async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.post('/', async (req, res) => {
+router.post('/', authMiddleware, checkBlockedMiddleware, async (req, res) => {
   try {
     const { session_id, name, message_template, target_numbers, schedule_pattern, is_active } = req.body;
 
@@ -194,7 +196,8 @@ router.post('/', async (req, res) => {
       message_template,
       target_numbers,
       schedule_pattern: schedule_pattern || null,
-      is_active: is_active || false
+      is_active: is_active || false,
+      user_id: req.userId
     };
 
     const bot = await botService.createBot(botData);
@@ -246,10 +249,10 @@ router.post('/', async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.put('/:id', async (req, res) => {
+router.put('/:id', authMiddleware, checkBlockedMiddleware, async (req, res) => {
   try {
     const updates = req.body;
-    const bot = await botService.updateBot(req.params.id, updates);
+    const bot = await botService.updateBot(req.params.id, updates, req.userId);
     res.json({ success: true, bot });
   } catch (error) {
     res.status(500).json({
@@ -279,9 +282,9 @@ router.put('/:id', async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authMiddleware, checkBlockedMiddleware, async (req, res) => {
   try {
-    await botService.deleteBot(req.params.id);
+    await botService.deleteBot(req.params.id, req.userId);
     res.json({ success: true, message: 'Bot deleted successfully' });
   } catch (error) {
     res.status(500).json({

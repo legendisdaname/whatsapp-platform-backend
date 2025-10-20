@@ -64,8 +64,21 @@ class BotService {
     }
   }
 
-  async updateBot(botId, updates) {
+  async updateBot(botId, updates, userId) {
     try {
+      // Verify ownership if userId provided
+      if (userId) {
+        const { data: bot } = await supabaseAdmin
+          .from('bots')
+          .select('user_id')
+          .eq('id', botId)
+          .single();
+        
+        if (bot && bot.user_id !== userId) {
+          throw new Error('Unauthorized: You do not own this bot');
+        }
+      }
+
       const { data: bot, error } = await supabaseAdmin
         .from('bots')
         .update(updates)
@@ -88,8 +101,21 @@ class BotService {
     }
   }
 
-  async deleteBot(botId) {
+  async deleteBot(botId, userId) {
     try {
+      // Verify ownership if userId provided
+      if (userId) {
+        const { data: bot } = await supabaseAdmin
+          .from('bots')
+          .select('user_id')
+          .eq('id', botId)
+          .single();
+        
+        if (bot && bot.user_id !== userId) {
+          throw new Error('Unauthorized: You do not own this bot');
+        }
+      }
+
       this.stopBot(botId);
 
       const { error } = await supabaseAdmin
@@ -110,6 +136,23 @@ class BotService {
       .select('*')
       .eq('id', botId)
       .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async getUserBots(userId) {
+    const query = supabaseAdmin
+      .from('bots')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    // Filter by user if userId provided
+    if (userId) {
+      query.eq('user_id', userId);
+    }
+    
+    const { data, error } = await query;
 
     if (error) throw error;
     return data;

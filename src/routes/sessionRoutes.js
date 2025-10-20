@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const whatsappService = require('../services/whatsappService');
+const { authMiddleware } = require('../middleware/auth');
+const { checkBlockedMiddleware } = require('../middleware/checkBlocked');
 
 /**
  * @swagger
@@ -29,9 +31,9 @@ const whatsappService = require('../services/whatsappService');
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/', async (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   try {
-    const sessions = await whatsappService.getAllSessions();
+    const sessions = await whatsappService.getUserSessions(req.userId);
     res.json({ success: true, sessions });
   } catch (error) {
     res.status(500).json({ 
@@ -72,9 +74,9 @@ router.get('/', async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const session = await whatsappService.getSession(req.params.id);
+    const session = await whatsappService.getSession(req.params.id, req.userId);
     res.json({ success: true, session });
   } catch (error) {
     res.status(500).json({ 
@@ -120,7 +122,7 @@ router.get('/:id', async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.post('/', async (req, res) => {
+router.post('/', authMiddleware, checkBlockedMiddleware, async (req, res) => {
   try {
     const { sessionName } = req.body;
     
@@ -131,7 +133,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const session = await whatsappService.createSession(sessionName);
+    const session = await whatsappService.createSession(sessionName, req.userId);
     res.status(201).json({ success: true, session });
   } catch (error) {
     res.status(500).json({ 
@@ -161,9 +163,9 @@ router.post('/', async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authMiddleware, checkBlockedMiddleware, async (req, res) => {
   try {
-    await whatsappService.deleteSession(req.params.id);
+    await whatsappService.deleteSession(req.params.id, req.userId);
     res.json({ success: true, message: 'Session deleted successfully' });
   } catch (error) {
     res.status(500).json({ 

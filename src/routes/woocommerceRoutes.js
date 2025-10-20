@@ -3,6 +3,8 @@ const router = express.Router();
 const crypto = require('crypto');
 const whatsappService = require('../services/whatsappService');
 const { supabaseAdmin } = require('../config/supabase');
+const { authMiddleware } = require('../middleware/auth');
+const { checkBlockedMiddleware } = require('../middleware/checkBlocked');
 
 // Verify webhook signature
 function verifyWebhookSignature(payload, signature, secret) {
@@ -80,9 +82,13 @@ router.post('/order-created', async (req, res) => {
     }
     
     // Get WooCommerce settings from database
+    // Note: For webhook, we need to match by store URL or have a custom header
+    // For now, get the first active settings (can be enhanced with store identification)
     const { data: settings, error: settingsError } = await supabaseAdmin
       .from('woocommerce_settings')
       .select('*')
+      .eq('enabled', true)
+      .limit(1)
       .single();
     
     if (settingsError || !settings) {
@@ -131,6 +137,7 @@ Thank you for shopping with us! ❤️`;
     await supabaseAdmin
       .from('woocommerce_notifications')
       .insert([{
+        user_id: settings.user_id,
         order_id: orderId,
         order_number: orderNumber,
         customer_phone: phone,
@@ -149,10 +156,11 @@ Thank you for shopping with us! ❤️`;
     console.error('WooCommerce webhook error:', error);
     
     // Log failed notification
-    if (req.body.id) {
+    if (req.body.id && settings?.user_id) {
       await supabaseAdmin
         .from('woocommerce_notifications')
         .insert([{
+          user_id: settings.user_id,
           order_id: req.body.id,
           order_number: req.body.number || 'N/A',
           customer_phone: req.body.billing?.phone || '',
@@ -258,14 +266,18 @@ router.post('/order-status-changed', async (req, res) => {
  *     summary: Get WooCommerce integration settings
  *     tags: [WooCommerce]
  */
-router.get('/settings', async (req, res) => {
+router.get('/settings', authMiddleware, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('woocommerce_settings')
       .select('*')
+      .eq('user_id', req.userId)
       .single();
     
-    if (error && error.code !== 'PGRST116') throw error;
+    if (error && error.code !== 'PGRST116') {
+      // No settings found is okay, return null
+      return res.json({ success: true, settings: null });
+    }
     
     res.json({ success: true, settings: data });
   } catch (error) {
@@ -280,21 +292,73 @@ router.get('/settings', async (req, res) => {
  *     summary: Create or update WooCommerce integration settings
  *     tags: [WooCommerce]
  */
-router.post('/settings', async (req, res) => {
+router.post('/settings', authMiddleware, checkBlockedMiddleware, async (req, res) => {
   try {
-    const settings = req.body;
+    // Use user_id from request body if provided, otherwise use from auth middleware
+    const userId = req.body.user_id || req.userId;
     
-    const { data, error } = await supabaseAdmin
+    if (!userId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'User ID is required' 
+      });
+    }
+    
+    const settings = {
+      ...req.body,
+      user_id: userId
+    };
+    
+    console.log('Saving WooCommerce settings:', { userId: userId, settings: { ...settings, session_id: settings.session_id ? '***' : null } });
+    
+    // Check if settings exist
+    const { data: existing, error: checkError } = await supabaseAdmin
       .from('woocommerce_settings')
-      .upsert([settings], { onConflict: 'id' })
-      .select()
+      .select('id')
+      .eq('user_id', userId)
       .single();
     
-    if (error) throw error;
+    // If error is "not found", that's okay - we'll create new
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('Error checking existing settings:', checkError);
+      throw checkError;
+    }
     
+    let data, error;
+    
+    if (existing) {
+      // Update existing
+      console.log('Updating existing WooCommerce settings');
+      ({ data, error } = await supabaseAdmin
+        .from('woocommerce_settings')
+        .update(settings)
+        .eq('user_id', userId)
+        .select()
+        .single());
+    } else {
+      // Create new
+      console.log('Creating new WooCommerce settings');
+      ({ data, error } = await supabaseAdmin
+        .from('woocommerce_settings')
+        .insert([settings])
+        .select()
+        .single());
+    }
+    
+    if (error) {
+      console.error('Database error:', error);
+      throw error;
+    }
+    
+    console.log('WooCommerce settings saved successfully');
     res.json({ success: true, settings: data });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('WooCommerce settings error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      details: error.code || 'Unknown error'
+    });
   }
 });
 
@@ -305,13 +369,14 @@ router.post('/settings', async (req, res) => {
  *     summary: Get notification logs
  *     tags: [WooCommerce]
  */
-router.get('/notifications', async (req, res) => {
+router.get('/notifications', authMiddleware, async (req, res) => {
   try {
     const { limit = 50, status } = req.query;
     
     let query = supabaseAdmin
       .from('woocommerce_notifications')
       .select('*')
+      .eq('user_id', req.userId)
       .order('created_at', { ascending: false })
       .limit(parseInt(limit));
     

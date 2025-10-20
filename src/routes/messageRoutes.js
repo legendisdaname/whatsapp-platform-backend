@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const whatsappService = require('../services/whatsappService');
 const { supabaseAdmin } = require('../config/supabase');
+const { authMiddleware } = require('../middleware/auth');
+const { checkBlockedMiddleware } = require('../middleware/checkBlocked');
 
 /**
  * @swagger
@@ -46,7 +48,7 @@ const { supabaseAdmin } = require('../config/supabase');
  *       500:
  *         description: Server error
  */
-router.post('/send', async (req, res) => {
+router.post('/send', authMiddleware, checkBlockedMiddleware, async (req, res) => {
   try {
     const { sessionId, to, message } = req.body;
 
@@ -54,6 +56,15 @@ router.post('/send', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'sessionId, to, and message are required'
+      });
+    }
+
+    // Verify user owns this session
+    const session = await whatsappService.getSession(sessionId, req.userId);
+    if (!session) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized: You do not own this session'
       });
     }
 
@@ -104,10 +115,19 @@ router.post('/send', async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.get('/history/:sessionId', async (req, res) => {
+router.get('/history/:sessionId', authMiddleware, async (req, res) => {
   try {
     const { sessionId } = req.params;
     const limit = parseInt(req.query.limit) || 50;
+
+    // Verify user owns this session
+    const session = await whatsappService.getSession(sessionId, req.userId);
+    if (!session) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized: You do not own this session'
+      });
+    }
 
     const { data: messages, error } = await supabaseAdmin
       .from('messages')
@@ -162,10 +182,19 @@ router.get('/history/:sessionId', async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.get('/received/:sessionId', async (req, res) => {
+router.get('/received/:sessionId', authMiddleware, async (req, res) => {
   try {
     const { sessionId } = req.params;
     const limit = parseInt(req.query.limit) || 50;
+
+    // Verify user owns this session
+    const session = await whatsappService.getSession(sessionId, req.userId);
+    if (!session) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized: You do not own this session'
+      });
+    }
 
     const { data: messages, error } = await supabaseAdmin
       .from('received_messages')

@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { supabaseAdmin } = require('../config/supabase');
+const { authMiddleware } = require('../middleware/auth');
+const { checkBlockedMiddleware } = require('../middleware/checkBlocked');
 
 /**
  * @swagger
@@ -18,13 +20,14 @@ const { supabaseAdmin } = require('../config/supabase');
  *       200:
  *         description: List of contact groups
  */
-router.get('/groups', async (req, res) => {
+router.get('/groups', authMiddleware, async (req, res) => {
   try {
     const { session_id } = req.query;
     
     let query = supabaseAdmin
       .from('contact_groups')
       .select('*, contacts:contact_group_members(contact_id, contacts(*))')
+      .eq('user_id', req.userId)
       .order('created_at', { ascending: false });
     
     if (session_id) {
@@ -124,7 +127,7 @@ router.get('/groups/:id', async (req, res) => {
  *       201:
  *         description: Group created
  */
-router.post('/groups', async (req, res) => {
+router.post('/groups', authMiddleware, checkBlockedMiddleware, async (req, res) => {
   try {
     const { session_id, name, description } = req.body;
     
@@ -137,7 +140,7 @@ router.post('/groups', async (req, res) => {
     
     const { data, error } = await supabaseAdmin
       .from('contact_groups')
-      .insert([{ session_id, name, description }])
+      .insert([{ session_id, name, description, user_id: req.userId }])
       .select()
       .single();
     
@@ -191,14 +194,15 @@ router.put('/groups/:id', async (req, res) => {
  *     summary: Delete a contact group
  *     tags: [Contacts]
  */
-router.delete('/groups/:id', async (req, res) => {
+router.delete('/groups/:id', authMiddleware, checkBlockedMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     
     const { error } = await supabaseAdmin
       .from('contact_groups')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', req.userId);
     
     if (error) throw error;
     
@@ -221,13 +225,14 @@ router.delete('/groups/:id', async (req, res) => {
  *     summary: Get all contacts
  *     tags: [Contacts]
  */
-router.get('/', async (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   try {
     const { session_id } = req.query;
     
     let query = supabaseAdmin
       .from('contacts')
       .select('*')
+      .eq('user_id', req.userId)
       .order('name', { ascending: true });
     
     if (session_id) {
@@ -255,7 +260,7 @@ router.get('/', async (req, res) => {
  *     summary: Create a new contact
  *     tags: [Contacts]
  */
-router.post('/', async (req, res) => {
+router.post('/', authMiddleware, checkBlockedMiddleware, async (req, res) => {
   try {
     const { session_id, phone_number, name, email, notes } = req.body;
     
@@ -268,7 +273,7 @@ router.post('/', async (req, res) => {
     
     const { data, error } = await supabaseAdmin
       .from('contacts')
-      .insert([{ session_id, phone_number, name, email, notes }])
+      .insert([{ session_id, phone_number, name, email, notes, user_id: req.userId }])
       .select()
       .single();
     
@@ -322,14 +327,15 @@ router.put('/:id', async (req, res) => {
  *     summary: Delete a contact
  *     tags: [Contacts]
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authMiddleware, checkBlockedMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     
     const { error } = await supabaseAdmin
       .from('contacts')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', req.userId);
     
     if (error) throw error;
     
