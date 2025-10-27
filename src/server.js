@@ -6,6 +6,7 @@ const swaggerSpecs = require('./config/swagger');
 const botService = require('./services/botService');
 const whatsappService = require('./services/whatsappService');
 const sessionHealthCheck = require('./services/sessionHealthCheck');
+const keepAlive = require('./services/keepAlive');
 require('dotenv').config();
 
 const app = express();
@@ -124,6 +125,17 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
     }
   }, 10000); // Wait 10 seconds before starting health check
   
+  // Start keep-alive service (only in production)
+  console.log('');
+  console.log('🔔 Step 4: Starting keep-alive service...');
+  setTimeout(() => {
+    try {
+      keepAlive.start();
+    } catch (error) {
+      console.error('❌ Failed to start keep-alive:', error);
+    }
+  }, 15000); // Wait 15 seconds before starting keep-alive
+  
   console.log('');
   console.log('========================================');
   console.log('✅ Server is ready and running!');
@@ -137,6 +149,9 @@ process.on('SIGTERM', () => {
   
   // Stop health check
   sessionHealthCheck.stop();
+  
+  // Stop keep-alive
+  keepAlive.stop();
   
   server.close(() => {
     console.log('✅ HTTP server closed');
