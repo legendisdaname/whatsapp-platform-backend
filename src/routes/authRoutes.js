@@ -84,7 +84,7 @@ router.post('/signup', async (req, res) => {
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '30d' }
     );
 
     res.json({
@@ -168,7 +168,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '30d' }
     );
 
     res.json({
@@ -316,7 +316,7 @@ router.post('/google/callback', async (req, res) => {
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '30d' }
     );
 
     res.json({
