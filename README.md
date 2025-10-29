@@ -1,152 +1,200 @@
-# WhatsApp Platform - Backend
+# WhatsApp Platform Backend
 
-Backend API server for WhatsApp Platform built with Express.js, whatsapp-web.js, and Supabase.
+Backend API for WhatsApp Platform built with Express.js, whatsapp-web.js, and Supabase.
 
 ## 🚀 Quick Start
 
-1. Install dependencies:
-```bash
-npm install
-```
+### Local Development
 
-2. Create `.env` file:
-```env
-PORT=5000
-SUPABASE_URL=your_supabase_url
-SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-NODE_ENV=development
-```
+1. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
 
-3. Set up database:
-- Go to your Supabase project
-- Run the SQL from `database/schema.sql` in SQL Editor
+2. **Set Environment Variables**:
+   Create a `.env` file:
+   ```bash
+   NODE_ENV=development
+   PORT=5000
+   SUPABASE_URL=your-supabase-url
+   SUPABASE_ANON_KEY=your-anon-key
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   JWT_SECRET=your-jwt-secret-min-32-chars
+   FRONTEND_URL=http://localhost:3000
+   ```
 
-4. Start the server:
-```bash
-npm run dev
-```
+3. **Start Server**:
+   ```bash
+   npm start
+   # or for development with auto-reload:
+   npm run dev
+   ```
+
+4. **Verify**:
+   ```bash
+   curl http://localhost:5000/health
+   ```
+
+### Production Deployment (Render)
+
+See [RENDER_DEPLOYMENT.md](./RENDER_DEPLOYMENT.md) for complete deployment guide.
+
+## 📋 Environment Variables
+
+### Required
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SUPABASE_URL` | Supabase project URL | `https://xxx.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key | `eyJhbGc...` |
+| `JWT_SECRET` | Secret for JWT tokens | `your-secret-key` |
+
+### Optional
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NODE_ENV` | Environment mode | `development` |
+| `PORT` | Server port | `5000` |
+| `SUPABASE_ANON_KEY` | Supabase anon key | - |
+| `FRONTEND_URL` | Frontend URL (for CORS) | `http://localhost:3000` |
+| `ADMIN_URL` | Admin panel URL (for CORS) | - |
+| `BACKEND_URL` | Backend URL (for keep-alive) | Auto-detected |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | - |
 
 ## 📁 Project Structure
 
 ```
 backend/
 ├── src/
-│   ├── config/
-│   │   ├── supabase.js       # Supabase client configuration
-│   │   └── swagger.js         # Swagger/OpenAPI configuration
-│   ├── services/
-│   │   ├── whatsappService.js # WhatsApp session management
-│   │   └── botService.js      # Bot automation logic
-│   ├── routes/
-│   │   ├── sessionRoutes.js   # Session API endpoints
-│   │   ├── messageRoutes.js   # Message API endpoints
-│   │   └── botRoutes.js       # Bot API endpoints
-│   └── server.js              # Main server file
-├── database/
-│   └── schema.sql             # Database schema
-├── package.json
-└── .env.example
+│   ├── config/          # Configuration files
+│   │   ├── supabase.js  # Supabase client setup
+│   │   └── swagger.js    # Swagger/OpenAPI docs
+│   ├── middleware/      # Express middleware
+│   │   ├── auth.js      # JWT authentication
+│   │   └── adminAuth.js # Admin authentication
+│   ├── routes/          # API routes
+│   │   ├── authRoutes.js
+│   │   ├── sessionRoutes.js
+│   │   ├── messageRoutes.js
+│   │   └── ...
+│   ├── services/        # Business logic
+│   │   ├── whatsappService.js
+│   │   ├── botService.js
+│   │   └── keepAlive.js
+│   └── server.js        # Main server file
+├── database/            # Database schemas
+│   └── schema.sql
+├── render.yaml          # Render deployment config
+└── package.json
 ```
 
-## 🔌 API Documentation
+## 🔌 API Endpoints
 
-Once the server is running, visit:
-- **Swagger UI**: http://localhost:5000/api-docs
-- **API Root**: http://localhost:5000
+### Health Check
+- `GET /health` - Server health status
 
-## 🛠️ Technologies
+### Authentication
+- `POST /api/auth/signup` - Register new user
+- `POST /api/auth/login` - User login
+- `GET /api/auth/google` - Initiate Google OAuth
+- `POST /api/auth/google/callback` - Google OAuth callback
+- `GET /api/auth/me` - Get current user
+- `POST /api/auth/logout` - Logout
 
-- **Express.js**: Web framework
-- **whatsapp-web.js**: WhatsApp Web API
-- **Supabase**: Database and authentication
-- **Swagger**: API documentation
-- **node-cron**: Task scheduling
-- **QRCode**: QR code generation
+### Sessions
+- `GET /api/sessions` - List all sessions
+- `POST /api/sessions` - Create new session
+- `DELETE /api/sessions/:id` - Delete session
 
-## 📝 Environment Variables
+### Messages
+- `POST /api/messages/send` - Send message
+- `GET /api/messages/history/:sessionId` - Get message history
 
-| Variable | Description |
-|----------|-------------|
-| PORT | Server port (default: 5000) |
-| SUPABASE_URL | Your Supabase project URL |
-| SUPABASE_ANON_KEY | Supabase anonymous key |
-| SUPABASE_SERVICE_ROLE_KEY | Supabase service role key (admin) |
-| NODE_ENV | Environment (development/production) |
+### Bots
+- `GET /api/bots` - List all bots
+- `POST /api/bots` - Create bot
+- `PUT /api/bots/:id` - Update bot
+- `DELETE /api/bots/:id` - Delete bot
 
-## 🔄 Scripts
+### Contacts
+- `GET /api/contacts` - List contacts
+- `POST /api/contacts` - Add contact
+- `PUT /api/contacts/:id` - Update contact
 
-- `npm start` - Start production server
-- `npm run dev` - Start development server with nodemon
+### WooCommerce
+- `GET /api/woocommerce/settings` - Get settings
+- `POST /api/woocommerce/settings` - Save settings
+- `POST /api/woocommerce/webhook` - Webhook endpoint
 
-## 📊 Database Tables
+### Admin
+- `POST /api/admin/auth/login` - Admin login
+- `GET /api/admin/users` - List users
+- `PUT /api/admin/users/:id/block` - Block user
+- `GET /api/admin/analytics` - Get analytics
 
-- **sessions**: WhatsApp session data
-- **messages**: Sent messages
-- **received_messages**: Received messages
-- **bots**: Bot configurations
-- **bot_executions**: Bot execution logs
+See `/api-docs` for complete Swagger documentation.
 
-## 🤖 Bot Service
+## 🔒 Security Features
 
-The bot service supports:
-- Scheduled message sending (cron patterns)
-- Multiple target recipients
-- Dynamic message templates
-- Manual triggering
-- Execution logging
+- ✅ JWT authentication
+- ✅ CORS protection
+- ✅ Environment variable validation
+- ✅ Production error hiding
+- ✅ Admin authentication
+- ✅ User blocking system
+- ✅ API key authentication
 
-### Cron Pattern Format
+## 🔔 Keep-Alive Service
 
-```
-* * * * *
-│ │ │ │ │
-│ │ │ │ └─── Day of week (0-7, Sunday = 0 or 7)
-│ │ │ └───── Month (1-12)
-│ │ └─────── Day of month (1-31)
-│ └───────── Hour (0-23)
-└─────────── Minute (0-59)
-```
+Prevents Render free tier from sleeping by pinging `/health` every 14 minutes.
 
-## 🔐 Security
+- **Auto-starts** in production mode
+- **Disabled** in development
+- **Configurable** via `BACKEND_URL` environment variable
 
-- Use service role key only server-side
-- Enable RLS (Row Level Security) in Supabase for production
-- Validate all inputs
-- Rate limit API endpoints in production
-- Never expose .env files
+## 📊 Database
 
-## 🐛 Debugging
+Uses Supabase (PostgreSQL) for data storage.
 
-Enable debug logs:
-```bash
-DEBUG=* npm run dev
-```
+### Required Tables
+- `users` - User accounts
+- `sessions` - WhatsApp sessions
+- `messages` - Message history
+- `bots` - Automated bots
+- `contacts` - Contact list
+- `woocommerce_settings` - WooCommerce configuration
+- `admins` - Admin accounts (optional)
 
-Check logs for:
-- WhatsApp connection status
-- Message sending errors
-- Bot execution results
-- Database queries
+See `database/schema.sql` for schema definitions.
 
-## 📦 Production Deployment
+## 🐛 Troubleshooting
 
-1. Set `NODE_ENV=production`
-2. Use process manager (PM2):
-```bash
-npm install -g pm2
-pm2 start src/server.js --name whatsapp-api
-```
+### Server won't start
+- Check environment variables are set
+- Verify Supabase credentials
+- Check port is available
 
-3. Configure reverse proxy (nginx/Apache)
-4. Set up SSL certificate
-5. Configure persistent storage for `.wwebjs_auth/`
+### CORS errors
+- Set `FRONTEND_URL` environment variable
+- Verify frontend domain matches exactly
 
-## ⚠️ Important Notes
+### Sessions not restoring
+- Check database connection
+- Verify sessions table exists
+- Check Supabase logs
 
-- WhatsApp session data is stored in `.wwebjs_auth/`
-- Keep this directory persistent across deployments
-- One WhatsApp number = one session
-- WhatsApp may ban for spam/automation abuse
-- Always follow WhatsApp Terms of Service
+### Keep-alive not working
+- Set `NODE_ENV=production`
+- Set `BACKEND_URL` to your Render URL
+- Check logs for errors
 
+## 📚 Documentation
+
+- [Render Deployment Guide](./RENDER_DEPLOYMENT.md)
+- [Keep-Alive Guide](../KEEP_ALIVE_GUIDE.md)
+- [API Documentation](./src/config/swagger.js)
+
+## 📝 License
+
+ISC

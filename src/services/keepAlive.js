@@ -5,11 +5,18 @@ const http = require('http');
 const https = require('https');
 
 const KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes in milliseconds
+const NODE_ENV = process.env.NODE_ENV || 'development';
 const BACKEND_URL = process.env.BACKEND_URL || 'https://whatsapp-platform-backend.onrender.com';
 
 let keepAliveInterval = null;
 
 function start() {
+  // Only run keep-alive in production
+  if (NODE_ENV !== 'production') {
+    console.log('⚠️ Keep-alive service disabled in development mode');
+    return;
+  }
+  
   console.log('🔔 Starting keep-alive service...');
   console.log(`📍 Backend URL: ${BACKEND_URL}`);
   
