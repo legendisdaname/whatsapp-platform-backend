@@ -13,7 +13,7 @@ const options = {
     },
     servers: [
       {
-        url: process.env.API_URL || 'https://whatsapp-platform-backend.onrender.com',
+        url: process.env.API_URL || 'https://whatapi.streamfinitytv.com',
         description: 'Development server'
       }
     ],

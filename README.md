@@ -52,8 +52,8 @@ backend/
 ## 🔌 API Documentation
 
 Once the server is running, visit:
-- **Swagger UI**: `/api-docs` (Production: https://whatsapp-platform-backend.onrender.com/api-docs)
-- **API Root**: `/` (Production: https://whatsapp-platform-backend.onrender.com)
+- **Swagger UI**: `/api-docs` (Production: https://whatapi.streamfinitytv.com/api-docs)
+- **API Root**: `/` (Production: https://whatapi.streamfinitytv.com)
 
 ## 🛠️ Technologies
 
@@ -75,7 +75,7 @@ Once the server is running, visit:
 | FRONTEND_URL | Frontend URL for OAuth redirects (default: https://whatsapp.streamfinitytv.com) |
 | GOOGLE_CLIENT_ID | Google OAuth Client ID |
 | GOOGLE_CLIENT_SECRET | Google OAuth Client Secret |
-| API_URL | Backend API URL for Swagger/docs (default: https://whatsapp-platform-backend.onrender.com) |
+| API_URL | Backend API URL for Swagger/docs (default: https://whatapi.streamfinitytv.com) |
 | NODE_ENV | Environment (development/production) |
 
 ## 🔄 Scripts

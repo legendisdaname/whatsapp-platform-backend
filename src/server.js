@@ -110,7 +110,7 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   console.log(`========================================`);
   console.log(`📍 Port: ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  const apiUrl = process.env.API_URL || 'https://whatsapp-platform-backend.onrender.com';
+  const apiUrl = process.env.API_URL || 'https://whatapi.streamfinitytv.com';
   console.log(`📚 API Documentation: ${apiUrl}/api-docs`);
   console.log(`========================================`);
   
