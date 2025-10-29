@@ -12,9 +12,25 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-// CORS configuration - allow production frontend
+// CORS configuration - allow production frontend and development
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'https://whatsapp.streamfinitytv.com',
+  'https://whatsapp.streamfinitytv.com'
+];
+
+// Allow multiple origins or use wildcard for development
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || 'https://whatsapp.streamfinitytv.com',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Allow requests from production frontend or if origin is in allowed list
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200
 };
