@@ -52,8 +52,8 @@ backend/
 ## 🔌 API Documentation
 
 Once the server is running, visit:
-- **Swagger UI**: http://localhost:5000/api-docs
-- **API Root**: http://localhost:5000
+- **Swagger UI**: `/api-docs` (Production: https://whatsapp-platform-backend.onrender.com/api-docs)
+- **API Root**: `/` (Production: https://whatsapp-platform-backend.onrender.com)
 
 ## 🛠️ Technologies
 
@@ -72,6 +72,10 @@ Once the server is running, visit:
 | SUPABASE_URL | Your Supabase project URL |
 | SUPABASE_ANON_KEY | Supabase anonymous key |
 | SUPABASE_SERVICE_ROLE_KEY | Supabase service role key (admin) |
+| FRONTEND_URL | Frontend URL for OAuth redirects (default: https://whatsapp.streamfinitytv.com) |
+| GOOGLE_CLIENT_ID | Google OAuth Client ID |
+| GOOGLE_CLIENT_SECRET | Google OAuth Client Secret |
+| API_URL | Backend API URL for Swagger/docs (default: https://whatsapp-platform-backend.onrender.com) |
 | NODE_ENV | Environment (development/production) |
 
 ## 🔄 Scripts

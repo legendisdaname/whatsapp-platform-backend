@@ -12,7 +12,13 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+// CORS configuration - allow production frontend
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || 'https://whatsapp.streamfinitytv.com',
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -88,7 +94,7 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   console.log(`========================================`);
   console.log(`📍 Port: ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
+  console.log(`📚 API Documentation: ${process.env.API_URL || `http://localhost:${PORT}`}/api-docs`);
   console.log(`========================================`);
   
   // Restore previous WhatsApp sessions (with delay to ensure everything is ready)

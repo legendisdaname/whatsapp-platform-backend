@@ -210,7 +210,7 @@ router.get('/google', (req, res) => {
       });
     }
 
-    const redirectUri = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/google/callback`;
+    const redirectUri = `${process.env.FRONTEND_URL || 'https://whatsapp.streamfinitytv.com'}/auth/google/callback`;
     const scope = encodeURIComponent('email profile');
     
     const url = `https://accounts.google.com/o/oauth2/v2/auth?` +
@@ -252,7 +252,7 @@ router.post('/google/callback', async (req, res) => {
 
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    const redirectUri = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/google/callback`;
+    const redirectUri = `${process.env.FRONTEND_URL || 'https://whatsapp.streamfinitytv.com'}/auth/google/callback`;
 
     if (!clientId || !clientSecret) {
       return res.status(500).json({
