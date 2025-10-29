@@ -1,15 +1,11 @@
 {
   "name": "whatsapp-platform-backend",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "description": "WhatsApp Platform Backend with whatsapp-web.js and Supabase",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
-    "version:patch": "npm version patch --no-git-tag-version",
-    "version:minor": "npm version minor --no-git-tag-version",
-    "version:major": "npm version major --no-git-tag-version",
-    "predeploy": "npm run version:patch"
+    "dev": "nodemon src/server.js"
   },
   "engines": {
     "node": ">=16.0.0",

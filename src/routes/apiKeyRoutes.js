@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { supabase, supabaseAdmin } = require('../config/supabase');
+const { supabase } = require('../config/supabase');
 const { authMiddleware } = require('../middleware/auth');
 const { generateApiKey } = require('../utils/apiKeyGenerator');
 
@@ -10,18 +10,16 @@ const { generateApiKey } = require('../utils/apiKeyGenerator');
  */
 router.get('/current', authMiddleware, async (req, res) => {
   try {
-    const { data: user, error } = await supabaseAdmin
+    const { data: user, error } = await supabase
       .from('users')
       .select('api_key')
       .eq('id', req.userId)
       .single();
 
     if (error) {
-      console.error('Error fetching API key:', error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to fetch API key',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: 'Failed to fetch API key'
       });
     }
 
@@ -44,27 +42,12 @@ router.get('/current', authMiddleware, async (req, res) => {
 /**
  * POST /api/api-keys/generate
  * Generate or regenerate API key for current user
- * 
- * IMPORTANT: API keys never expire automatically.
- * - Keys remain valid until explicitly revoked by the user
- * - Regenerating a key invalidates the old key and creates a new one
- * - Users must explicitly call DELETE /api/api-keys/current to revoke their key
  */
 router.post('/generate', authMiddleware, async (req, res) => {
   try {
-    if (!supabaseAdmin) {
-      console.error('Supabase admin client not initialized');
-      return res.status(500).json({
-        success: false,
-        message: 'Database not configured. Please contact support.'
-      });
-    }
-
     const newApiKey = generateApiKey();
 
-    // Update API key - this will replace the existing key if one exists
-    // The old key becomes invalid immediately after this update
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from('users')
       .update({ api_key: newApiKey })
       .eq('id', req.userId)
@@ -72,12 +55,9 @@ router.post('/generate', authMiddleware, async (req, res) => {
       .single();
 
     if (error) {
-      console.error('Error generating API key:', error);
-      console.error('Error details:', JSON.stringify(error, null, 2));
       return res.status(500).json({
         success: false,
-        message: 'Failed to generate API key',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: 'Failed to generate API key'
       });
     }
 
@@ -100,25 +80,18 @@ router.post('/generate', authMiddleware, async (req, res) => {
 /**
  * DELETE /api/api-keys/current
  * Revoke current user's API key
- * 
- * This is the ONLY way to revoke an API key.
- * API keys never expire automatically - they remain valid until explicitly revoked here.
  */
 router.delete('/current', authMiddleware, async (req, res) => {
   try {
-    // Only revoke if user explicitly requests it
-    // Setting api_key to null permanently invalidates the key
-    const { error } = await supabaseAdmin
+    const { error } = await supabase
       .from('users')
       .update({ api_key: null })
       .eq('id', req.userId);
 
     if (error) {
-      console.error('Error revoking API key:', error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to revoke API key',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: 'Failed to revoke API key'
       });
     }
 

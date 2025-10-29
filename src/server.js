@@ -8,62 +8,13 @@ const whatsappService = require('./services/whatsappService');
 const sessionHealthCheck = require('./services/sessionHealthCheck');
 require('dotenv').config();
 
-// Validate required environment variables
-function validateEnvVars() {
-  const required = [
-    'SUPABASE_URL',
-    'SUPABASE_SERVICE_ROLE_KEY',
-    'JWT_SECRET'
-  ];
-  
-  const missing = required.filter(key => !process.env[key]);
-  
-  if (missing.length > 0) {
-    console.error('❌ Missing required environment variables:');
-    missing.forEach(key => console.error(`   - ${key}`));
-    console.error('\n⚠️ Server will start but some features may not work.');
-    console.error('💡 Set these in Render Dashboard > Environment tab\n');
-  } else {
-    console.log('✅ All required environment variables are set');
-  }
-}
-
-// Run validation
-validateEnvVars();
-
 const app = express();
 const PORT = process.env.PORT || 5000;
-const NODE_ENV = process.env.NODE_ENV || 'development';
-const VERSION = require('../package.json').version;
-
-// CORS Configuration
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:5173',
-  process.env.FRONTEND_URL,
-  process.env.ADMIN_URL
-].filter(Boolean); // Remove undefined values
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1 || NODE_ENV === 'development') {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key']
-};
 
 // Middleware
-app.use(cors(corsOptions));
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cors());
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
 // Swagger documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
@@ -106,8 +57,7 @@ app.get('/health', (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     message: 'WhatsApp Platform API',
-    version: VERSION,
-    buildDate: new Date().toISOString(),
+    version: '1.0.0',
     documentation: '/api-docs',
     endpoints: {
       sessions: '/api/sessions',
@@ -116,35 +66,18 @@ app.get('/', (req, res) => {
       contacts: '/api/contacts',
       woocommerce: '/api/woocommerce',
       import: '/api/import',
-      health: '/health',
-      version: '/api/version'
+      health: '/health'
     }
-  });
-});
-
-// Version endpoint
-app.get('/api/version', (req, res) => {
-  res.json({
-    success: true,
-    version: VERSION,
-    buildDate: new Date().toISOString(),
-    environment: NODE_ENV,
-    nodeVersion: process.version
   });
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  
-  // In production, don't expose internal error details
-  const isDevelopment = NODE_ENV === 'development';
-  
-  res.status(err.status || 500).json({
+  res.status(500).json({
     success: false,
     error: 'Internal server error',
-    message: isDevelopment ? err.message : 'An error occurred. Please try again later.',
-    ...(isDevelopment && { stack: err.stack })
+    message: err.message
   });
 });
 
@@ -155,7 +88,6 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   console.log(`========================================`);
   console.log(`📍 Port: ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📦 Version: ${VERSION}`);
   console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
   console.log(`========================================`);
   
