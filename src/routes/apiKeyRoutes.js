@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { supabase } = require('../config/supabase');
+const { supabase, supabaseAdmin } = require('../config/supabase');
 const { authMiddleware } = require('../middleware/auth');
 const { generateApiKey } = require('../utils/apiKeyGenerator');
 
@@ -10,16 +10,18 @@ const { generateApiKey } = require('../utils/apiKeyGenerator');
  */
 router.get('/current', authMiddleware, async (req, res) => {
   try {
-    const { data: user, error } = await supabase
+    const { data: user, error } = await supabaseAdmin
       .from('users')
       .select('api_key')
       .eq('id', req.userId)
       .single();
 
     if (error) {
+      console.error('Error fetching API key:', error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to fetch API key'
+        message: 'Failed to fetch API key',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
 
@@ -45,9 +47,17 @@ router.get('/current', authMiddleware, async (req, res) => {
  */
 router.post('/generate', authMiddleware, async (req, res) => {
   try {
+    if (!supabaseAdmin) {
+      console.error('Supabase admin client not initialized');
+      return res.status(500).json({
+        success: false,
+        message: 'Database not configured. Please contact support.'
+      });
+    }
+
     const newApiKey = generateApiKey();
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('users')
       .update({ api_key: newApiKey })
       .eq('id', req.userId)
@@ -55,9 +65,12 @@ router.post('/generate', authMiddleware, async (req, res) => {
       .single();
 
     if (error) {
+      console.error('Error generating API key:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
       return res.status(500).json({
         success: false,
-        message: 'Failed to generate API key'
+        message: 'Failed to generate API key',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
 
@@ -83,15 +96,17 @@ router.post('/generate', authMiddleware, async (req, res) => {
  */
 router.delete('/current', authMiddleware, async (req, res) => {
   try {
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('users')
       .update({ api_key: null })
       .eq('id', req.userId);
 
     if (error) {
+      console.error('Error revoking API key:', error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to revoke API key'
+        message: 'Failed to revoke API key',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
 
