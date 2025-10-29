@@ -481,6 +481,10 @@ class WhatsAppService {
     return this.clients.get(sessionId);
   }
 
+  getAllClients() {
+    return this.clients;
+  }
+
   async reconnectSession(sessionId) {
     try {
       console.log(`🔄 Attempting to reconnect session ${sessionId}...`);
@@ -574,8 +578,10 @@ class WhatsAppService {
       for (const session of sessions) {
         try {
           // Check if auth data exists for this session
-          const authPath = path.join(this.authDataPath, `session-${session.id}`);
-          if (!fs.existsSync(authPath)) {
+          // LocalAuth uses clientId as folder name directly (not session-{id})
+          const authPath = path.join(this.authDataPath, session.id);
+          const authExists = fs.existsSync(authPath) && fs.existsSync(path.join(authPath, 'Default'));
+          if (!authExists) {
             console.log(`⚠️ No auth data found for ${session.session_name}, skipping`);
             continue;
           }

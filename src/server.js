@@ -154,18 +154,45 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   console.log('');
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('⚠️ SIGTERM signal received: closing HTTP server gracefully...');
+// Graceful shutdown handlers
+const gracefulShutdown = async (signal) => {
+  console.log(`⚠️ ${signal} signal received: closing HTTP server gracefully...`);
   
   // Stop health check
   sessionHealthCheck.stop();
+  
+  // Close WhatsApp clients gracefully
+  try {
+    const whatsappService = require('./services/whatsappService');
+    const clients = whatsappService.getAllClients();
+    console.log(`Closing ${clients.size} WhatsApp client(s)...`);
+    
+    for (const [sessionId, client] of clients) {
+      try {
+        await client.destroy();
+        console.log(`✅ Closed client for session ${sessionId}`);
+      } catch (error) {
+        console.error(`❌ Error closing client ${sessionId}:`, error.message);
+      }
+    }
+  } catch (error) {
+    console.error('Error during client cleanup:', error);
+  }
   
   server.close(() => {
     console.log('✅ HTTP server closed');
     process.exit(0);
   });
-});
+  
+  // Force exit after 30 seconds if graceful shutdown hangs
+  setTimeout(() => {
+    console.error('⚠️ Forced exit after graceful shutdown timeout');
+    process.exit(1);
+  }, 30000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 module.exports = app;
 
