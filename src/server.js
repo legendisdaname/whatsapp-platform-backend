@@ -35,6 +35,7 @@ validateEnvVars();
 const app = express();
 const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+const VERSION = require('../package.json').version;
 
 // CORS Configuration
 const allowedOrigins = [
@@ -106,7 +107,8 @@ app.get('/health', (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     message: 'WhatsApp Platform API',
-    version: '1.0.0',
+    version: VERSION,
+    buildDate: new Date().toISOString(),
     documentation: '/api-docs',
     endpoints: {
       sessions: '/api/sessions',
@@ -115,8 +117,20 @@ app.get('/', (req, res) => {
       contacts: '/api/contacts',
       woocommerce: '/api/woocommerce',
       import: '/api/import',
-      health: '/health'
+      health: '/health',
+      version: '/api/version'
     }
+  });
+});
+
+// Version endpoint
+app.get('/api/version', (req, res) => {
+  res.json({
+    success: true,
+    version: VERSION,
+    buildDate: new Date().toISOString(),
+    environment: NODE_ENV,
+    nodeVersion: process.version
   });
 });
 
@@ -142,6 +156,7 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   console.log(`========================================`);
   console.log(`📍 Port: ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📦 Version: ${VERSION}`);
   console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
   console.log(`========================================`);
   
