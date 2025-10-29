@@ -34,9 +34,10 @@ const apiKeyAuth = async (req, res, next) => {
     }
 
     // Look up user by API key
+    // IMPORTANT: API keys never expire - they only get revoked when user explicitly revokes them
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, name')
+      .select('id, email, name, is_blocked')
       .eq('api_key', apiKey)
       .single();
 
@@ -46,6 +47,15 @@ const apiKeyAuth = async (req, res, next) => {
         message: 'Invalid API key'
       });
     }
+
+    // Check if user is blocked (API keys should still work even if user is blocked via UI)
+    // But you can uncomment this if you want to block API access for blocked users:
+    // if (user.is_blocked) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: 'Account is blocked. API access is disabled.'
+    //   });
+    // }
 
     // Attach user info to request
     req.userId = user.id;

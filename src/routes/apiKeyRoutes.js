@@ -44,6 +44,11 @@ router.get('/current', authMiddleware, async (req, res) => {
 /**
  * POST /api/api-keys/generate
  * Generate or regenerate API key for current user
+ * 
+ * IMPORTANT: API keys never expire automatically.
+ * - Keys remain valid until explicitly revoked by the user
+ * - Regenerating a key invalidates the old key and creates a new one
+ * - Users must explicitly call DELETE /api/api-keys/current to revoke their key
  */
 router.post('/generate', authMiddleware, async (req, res) => {
   try {
@@ -57,6 +62,8 @@ router.post('/generate', authMiddleware, async (req, res) => {
 
     const newApiKey = generateApiKey();
 
+    // Update API key - this will replace the existing key if one exists
+    // The old key becomes invalid immediately after this update
     const { data, error } = await supabaseAdmin
       .from('users')
       .update({ api_key: newApiKey })
@@ -93,9 +100,14 @@ router.post('/generate', authMiddleware, async (req, res) => {
 /**
  * DELETE /api/api-keys/current
  * Revoke current user's API key
+ * 
+ * This is the ONLY way to revoke an API key.
+ * API keys never expire automatically - they remain valid until explicitly revoked here.
  */
 router.delete('/current', authMiddleware, async (req, res) => {
   try {
+    // Only revoke if user explicitly requests it
+    // Setting api_key to null permanently invalidates the key
     const { error } = await supabaseAdmin
       .from('users')
       .update({ api_key: null })

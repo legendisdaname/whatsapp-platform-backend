@@ -169,6 +169,10 @@ router.put('/users/:id', adminAuthMiddleware, async (req, res) => {
     if (email !== undefined) updates.email = email;
     if (is_blocked !== undefined) updates.is_blocked = is_blocked;
 
+    // IMPORTANT: Never update api_key here - API keys should only be revoked
+    // by the user themselves via DELETE /api/api-keys/current
+    // This prevents accidental API key revocation by admins
+
     const { data, error } = await supabaseAdmin
       .from('users')
       .update(updates)
