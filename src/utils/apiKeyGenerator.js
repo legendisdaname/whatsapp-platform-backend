@@ -2,8 +2,11 @@ const crypto = require('crypto');
 
 /**
  * Generate a secure API key
- * Format: wp_live_[32 random hex characters]
- * Example: wp_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+ * Format: wp_live_[64 random hex characters]
+ * Example: wp_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2
+ * 
+ * IMPORTANT: API keys NEVER expire. They remain valid until manually regenerated or revoked.
+ * Users must manually regenerate their API key to invalidate the old one.
  */
 function generateApiKey() {
   const randomBytes = crypto.randomBytes(32);
@@ -13,6 +16,7 @@ function generateApiKey() {
 
 /**
  * Validate API key format
+ * Note: This only validates the format, NOT expiration (API keys never expire)
  */
 function validateApiKeyFormat(apiKey) {
   if (!apiKey || typeof apiKey !== 'string') {

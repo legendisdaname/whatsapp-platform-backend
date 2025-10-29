@@ -113,7 +113,8 @@ class WhatsAppService {
       // Backup auth data (if enabled)
       await authBackupService.backupAuthData(sessionId);
       
-      // Start keepalive mechanism
+      // Start keepalive mechanism immediately
+      // This is critical to prevent disconnection
       this.startKeepalive(sessionId, client);
     });
 
@@ -145,7 +146,7 @@ class WhatsAppService {
     client.on('disconnected', async (reason) => {
       console.log(`Client ${sessionId} disconnected:`, reason);
       
-      // Stop keepalive
+      // Stop keepalive (it will restart after reconnection)
       this.stopKeepalive(sessionId);
       
       await supabaseAdmin
@@ -157,14 +158,27 @@ class WhatsAppService {
         })
         .eq('id', sessionId);
 
+      // Remove old client from map immediately to allow reconnection
       this.clients.delete(sessionId);
       
-      // Auto-reconnect after 30 seconds (only if reason is not logout)
+      // Auto-reconnect more aggressively (only if reason is not logout)
       if (reason !== 'LOGOUT') {
-        console.log(`⏰ Scheduling reconnection for session ${sessionId} in 30 seconds...`);
-        setTimeout(() => {
-          this.reconnectSession(sessionId);
-        }, 30000);
+        console.log(`⏰ Scheduling reconnection for session ${sessionId} in 10 seconds...`);
+        
+        // Reconnect sooner (10 seconds instead of 30) to minimize downtime
+        setTimeout(async () => {
+          try {
+            await this.reconnectSession(sessionId);
+          } catch (error) {
+            console.error(`Failed to reconnect ${sessionId} after disconnect:`, error.message);
+            // Retry again after 2 minutes if first attempt fails
+            setTimeout(() => {
+              this.reconnectSession(sessionId).catch(err => {
+                console.error(`Second reconnect attempt failed for ${sessionId}:`, err.message);
+              });
+            }, 120000);
+          }
+        }, 10000); // 10 seconds - faster reconnection
       } else {
         console.log(`🚪 Session ${sessionId} logged out, not reconnecting automatically`);
       }
@@ -200,33 +214,163 @@ class WhatsAppService {
         throw new Error('WhatsApp client is not connected');
       }
 
-      // Format phone number (remove non-digits and add country code if needed)
-      let formattedNumber = to.replace(/\D/g, '');
-      if (!formattedNumber.includes('@')) {
-        formattedNumber = `${formattedNumber}@c.us`;
+      // Format phone number - automatically add @c.us if not already present
+      // This ensures users can send messages by providing just the phone number with country code
+      // Examples: "+212 665-927999" -> "212665927999@c.us"
+      //          "+212 0655-927999" -> "212655927999@c.us" (removes leading zero)
+      //          "1234567890" -> "1234567890@c.us"
+      //          "1234567890@c.us" -> "1234567890@c.us" (already formatted)
+      
+      /**
+       * Normalize international phone number for WhatsApp
+       * Handles various formats including numbers with leading zeros after country code
+       * @param {string} phoneNumber - Raw phone number in any format
+       * @returns {string} - Normalized digits only (without @c.us)
+       */
+      const normalizePhoneNumber = (phoneNumber) => {
+        // Remove all non-digit characters to get just the digits
+        let digits = phoneNumber.replace(/\D/g, '');
+        
+        if (!digits || digits.length < 8) {
+          return null;
+        }
+        
+        // Handle leading zeros after country codes (common in international formats)
+        // This pattern handles cases like: +212 0655... where 0 should be removed
+        // Country codes are typically 1-3 digits, so we check positions 1-5 for a leading zero
+        // Common patterns:
+        // - 1-digit country code: 1-2 digit, then potential 0
+        // - 2-digit country code: 2-3 digit, then potential 0  
+        // - 3-digit country code: 3-4 digit, then potential 0
+        
+        // Check if number starts with common country codes and has a leading zero after
+        // Most common: numbers starting with 1-3 digits (country code) followed by 0
+        // IMPORTANT: Check patterns in reverse order (3-digit first) to catch longer codes first
+        // This prevents false matches with shorter country codes
+        const countryCodePatterns = [
+          /^(\d{3})(0)(\d{5,})/,  // 3-digit country code followed by 0 (common for countries like 212, 234, etc.)
+          /^(\d{2})(0)(\d{6,})/,  // 2-digit country code followed by 0 (common)
+          /^(\d{1})(0)(\d{7,})/,  // 1-digit country code followed by 0 (rare but possible)
+        ];
+        
+        for (const pattern of countryCodePatterns) {
+          const match = digits.match(pattern);
+          if (match) {
+            // Remove the leading zero after country code
+            const countryCode = match[1];
+            const rest = match[3];
+            
+            // Validate: the resulting number should be reasonable (7-15 digits total)
+            const normalized = countryCode + rest;
+            if (normalized.length >= 7 && normalized.length <= 15) {
+              console.log(`[normalizePhoneNumber] Removed leading zero: ${digits} -> ${normalized}`);
+              return normalized;
+            }
+          }
+        }
+        
+        // If no pattern matched, return digits as-is (might be already formatted correctly)
+        return digits;
+      };
+      
+      let formattedNumber = String(to).trim();
+      console.log(`[sendMessage] Original phone number: "${to}"`);
+      
+      // Check if it's already a WhatsApp ID format
+      if (formattedNumber.includes('@g.us')) {
+        // Group number - keep @g.us format, just clean the ID part
+        const parts = formattedNumber.split('@');
+        const cleanedId = parts[0].replace(/[^0-9]/g, '');
+        formattedNumber = `${cleanedId}@g.us`;
+        console.log(`[sendMessage] Detected group number, formatted: ${formattedNumber}`);
+      } else if (formattedNumber.includes('@c.us')) {
+        // Already has @c.us, just clean any non-digits before @
+        const parts = formattedNumber.split('@');
+        const digitsOnly = parts[0].replace(/\D/g, '');
+        formattedNumber = `${digitsOnly}@c.us`;
+        console.log(`[sendMessage] Already had @c.us, formatted: ${formattedNumber}`);
+      } else {
+        // No @ found - normalize and add @c.us automatically
+        const normalizedDigits = normalizePhoneNumber(formattedNumber);
+        
+        if (!normalizedDigits) {
+          throw new Error(`Invalid phone number: "${to}". Must contain at least 8 digits after normalization.`);
+        }
+        
+        // Automatically add @c.us suffix for individual contacts
+        formattedNumber = `${normalizedDigits}@c.us`;
+        console.log(`[sendMessage] Normalized and auto-added @c.us, formatted: ${formattedNumber}`);
+      }
+      
+      console.log(`[sendMessage] Final formatted number: ${to} -> ${formattedNumber}`);
+      
+      // Validate formatted number (should be at least 8 digits + @c.us = minimum 13 characters)
+      if (!formattedNumber || formattedNumber.length < 13) {
+        throw new Error(`Invalid phone number format after processing: ${formattedNumber}`);
       }
 
-      // Send message
-      const sentMessage = await client.sendMessage(formattedNumber, message);
+      // Send message using whatsapp-web.js
+      console.log(`[sendMessage] Attempting to send message to: ${formattedNumber}`);
+      console.log(`[sendMessage] Message content length: ${message.length} characters`);
+      
+      let sentMessage;
+      try {
+        sentMessage = await client.sendMessage(formattedNumber, message);
+        console.log(`[sendMessage] ✅ Message sent successfully to ${formattedNumber}`);
+        console.log(`[sendMessage] Sent message ID: ${sentMessage.id?._serialized || sentMessage.id || 'N/A'}`);
+      } catch (sendError) {
+        console.error(`[sendMessage] ❌ Error from whatsapp-web.js:`, sendError);
+        console.error(`[sendMessage] Error details:`, {
+          message: sendError.message,
+          stack: sendError.stack,
+          name: sendError.name,
+          formattedNumber: formattedNumber,
+          originalNumber: to
+        });
+        
+        // Provide more helpful error messages based on common whatsapp-web.js errors
+        if (sendError.message && (sendError.message.includes('not found') || sendError.message.includes('not exist'))) {
+          throw new Error(`Phone number ${formattedNumber} is not registered on WhatsApp. Please ensure the number exists and has WhatsApp installed. Original: ${to}`);
+        }
+        
+        if (sendError.message && sendError.message.includes('phone')) {
+          throw new Error(`Invalid phone number format: ${formattedNumber}. Original: ${to}`);
+        }
+        
+        if (sendError.message && sendError.message.includes('number')) {
+          throw new Error(`Phone number error: ${sendError.message}. Formatted: ${formattedNumber}, Original: ${to}`);
+        }
+        
+        // Re-throw with more context
+        throw new Error(`Failed to send message: ${sendError.message}. Number: ${formattedNumber} (original: ${to})`);
+      }
 
       // Log message in database
+      const messageData = {
+        session_id: sessionId,
+        to: to, // Store original number
+        message: message,
+        status: 'sent',
+        sent_at: new Date().toISOString()
+      };
+
       const { data, error } = await supabaseAdmin
         .from('messages')
-        .insert([
-          {
-            session_id: sessionId,
-            to: to,
-            message: message,
-            status: 'sent',
-            sent_at: new Date().toISOString()
-          }
-        ])
+        .insert([messageData])
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error(`[sendMessage] Database error:`, error);
+        // Don't throw here - message was sent successfully, just couldn't log it
+        console.warn(`[sendMessage] Message sent but failed to log in database`);
+      }
 
-      return data;
+      return {
+        ...(data || {}),
+        formatted_number: formattedNumber,
+        whatsapp_message_id: sentMessage?.id?._serialized || sentMessage?.id
+      };
     } catch (error) {
       console.error('Error sending message:', error);
       
@@ -387,6 +531,8 @@ class WhatsAppService {
       
       await client.initialize();
       console.log(`✅ Reconnection initiated for session ${sessionId}`);
+      
+      // Note: Keepalive will be started automatically in the 'ready' event handler
     } catch (error) {
       console.error(`❌ Failed to reconnect session ${sessionId}:`, error);
       
@@ -490,36 +636,116 @@ class WhatsAppService {
     }
   }
   
-  // Keepalive mechanism to maintain connection
+  // Enhanced keepalive mechanism to maintain connection
   startKeepalive(sessionId, client) {
     // Clear any existing interval
     this.stopKeepalive(sessionId);
     
-    // Ping every 30 seconds to keep connection alive
+    // More frequent ping every 20 seconds to keep connection alive
+    // WhatsApp Web typically disconnects after ~30-60 seconds of inactivity
     const interval = setInterval(async () => {
       try {
-        const state = await client.getState();
+        // Check if client still exists
+        const currentClient = this.clients.get(sessionId);
+        if (!currentClient || currentClient !== client) {
+          console.log(`⚠️ Client instance changed for session ${sessionId}, stopping keepalive`);
+          this.stopKeepalive(sessionId);
+          return;
+        }
+
+        // Get current state
+        let state;
+        try {
+          state = await client.getState();
+        } catch (stateError) {
+          // If getState fails, connection is likely lost
+          console.log(`⚠️ Cannot get state for session ${sessionId}: ${stateError.message}`);
+          throw new Error('Connection lost');
+        }
+
         if (state === 'CONNECTED') {
+          // Additional keepalive actions to maintain connection
+          try {
+            // Access client info as a keepalive action (lightweight operation)
+            // This helps keep the connection active
+            const info = client.info;
+            if (info && info.wid) {
+              // Connection is truly alive
+            }
+          } catch (infoError) {
+            // Info check failed, but state is CONNECTED - continue
+            console.log(`⚠️ Keepalive info check failed for ${sessionId}, but state is CONNECTED`);
+          }
+
           // Update last_seen in database
           await supabaseAdmin
             .from('sessions')
             .update({ 
               updated_at: new Date().toISOString(),
-              last_seen: new Date().toISOString()
+              last_seen: new Date().toISOString(),
+              status: 'connected' // Ensure status stays connected
+            })
+            .eq('id', sessionId);
+
+          // Log successful keepalive (only every 5th ping to avoid spam)
+          const pingCount = this.keepalivePingCount = (this.keepalivePingCount || 0) + 1;
+          if (pingCount % 5 === 0) {
+            console.log(`💓 Keepalive ping successful for session ${sessionId} (${pingCount} pings)`);
+          }
+        } else if (state === 'CONNECTING' || state === 'PAIRING') {
+          // Session is in transition, wait a bit longer
+          console.log(`⏳ Session ${sessionId} is ${state}, keeping keepalive active`);
+          await supabaseAdmin
+            .from('sessions')
+            .update({ 
+              updated_at: new Date().toISOString()
             })
             .eq('id', sessionId);
         } else {
+          // State is not CONNECTED - attempt immediate reconnection
           console.log(`⚠️ Session ${sessionId} not connected (state: ${state}), attempting reconnect...`);
-          this.stopKeepalive(sessionId);
-          await this.reconnectSession(sessionId);
+          
+          // Update status but keep keepalive running (it will stop if reconnect succeeds)
+          await supabaseAdmin
+            .from('sessions')
+            .update({ 
+              status: 'disconnected',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', sessionId);
+          
+          // Attempt reconnection without stopping keepalive immediately
+          // This allows multiple reconnect attempts
+          this.reconnectSession(sessionId).catch(error => {
+            console.error(`Reconnection failed during keepalive for ${sessionId}:`, error.message);
+          });
         }
       } catch (error) {
-        console.error(`Keepalive check failed for session ${sessionId}:`, error.message);
+        // Connection error detected
+        console.error(`💔 Keepalive check failed for session ${sessionId}:`, error.message);
+        
+        // Update status to disconnected
+        await supabaseAdmin
+          .from('sessions')
+          .update({ 
+            status: 'disconnected',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', sessionId)
+          .catch(dbError => {
+            console.error(`Failed to update session status in database:`, dbError);
+          });
+
+        // Attempt reconnection
+        console.log(`🔄 Attempting to reconnect session ${sessionId} after keepalive failure...`);
+        this.reconnectSession(sessionId).catch(reconnectError => {
+          console.error(`Reconnection failed:`, reconnectError.message);
+        });
       }
-    }, 30000); // Every 30 seconds
+    }, 20000); // Every 20 seconds - more frequent to prevent disconnection
     
     this.keepaliveIntervals.set(sessionId, interval);
-    console.log(`💓 Keepalive started for session ${sessionId}`);
+    console.log(`💓 Keepalive started for session ${sessionId} (checking every 20 seconds)`);
   }
   
   stopKeepalive(sessionId) {

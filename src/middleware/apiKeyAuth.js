@@ -4,6 +4,13 @@ const { validateApiKeyFormat } = require('../utils/apiKeyGenerator');
 /**
  * Middleware to authenticate requests using API key
  * Looks for API key in Authorization header or x-api-key header
+ * 
+ * IMPORTANT: API keys NEVER expire. This middleware only validates:
+ * - API key format is correct
+ * - API key exists in the database
+ * - API key belongs to an active user
+ * 
+ * There is NO expiration check - API keys remain valid indefinitely until manually regenerated.
  */
 const apiKeyAuth = async (req, res, next) => {
   try {
@@ -25,7 +32,7 @@ const apiKeyAuth = async (req, res, next) => {
       });
     }
 
-    // Validate API key format
+    // Validate API key format (format only, no expiration check)
     if (!validateApiKeyFormat(apiKey)) {
       return res.status(401).json({
         success: false,
@@ -33,7 +40,7 @@ const apiKeyAuth = async (req, res, next) => {
       });
     }
 
-    // Look up user by API key
+    // Look up user by API key (no expiration date stored or checked)
     const { data: user, error } = await supabase
       .from('users')
       .select('id, email, name')

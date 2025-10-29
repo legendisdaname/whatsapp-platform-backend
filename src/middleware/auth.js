@@ -9,6 +9,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-producti
  */
 const authMiddleware = async (req, res, next) => {
   try {
+    // Check if supabaseAdmin is available
+    if (!supabaseAdmin) {
+      console.error('supabaseAdmin client is not initialized in authMiddleware');
+      return res.status(500).json({
+        success: false,
+        message: 'Database connection error. Please check SUPABASE_SERVICE_ROLE_KEY in environment variables.'
+      });
+    }
+
     // Get token from Authorization header
     const authHeader = req.headers.authorization;
     
@@ -32,9 +41,10 @@ const authMiddleware = async (req, res, next) => {
       .single();
 
     if (error || !user) {
+      console.error('User lookup error:', error);
       return res.status(401).json({
         success: false,
-        message: 'Invalid token'
+        message: 'Invalid token or user not found'
       });
     }
 
@@ -62,7 +72,7 @@ const authMiddleware = async (req, res, next) => {
 
     return res.status(500).json({
       success: false,
-      message: 'Authentication failed'
+      message: error.message || 'Authentication failed'
     });
   }
 };
@@ -73,6 +83,12 @@ const authMiddleware = async (req, res, next) => {
  */
 const optionalAuth = async (req, res, next) => {
   try {
+    // Check if supabaseAdmin is available
+    if (!supabaseAdmin) {
+      // Continue without auth if admin client not available
+      return next();
+    }
+
     const authHeader = req.headers.authorization;
     
     if (authHeader && authHeader.startsWith('Bearer ')) {

@@ -64,22 +64,17 @@ router.post('/order-created', async (req, res) => {
       ).join('\n');
     }
     
-    // Format phone number
-    if (!customerPhone) {
+    // Validate phone number (don't format here - let whatsappService.handle it)
+    if (!customerPhone || !customerPhone.trim()) {
       return res.status(400).json({ 
         success: false,
         error: 'No phone number provided in order' 
       });
     }
     
-    const phone = customerPhone.replace(/[^0-9]/g, '');
-    
-    if (!phone) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Invalid phone number format' 
-      });
-    }
+    // Pass the original phone number to whatsappService.sendMessage
+    // It will handle all normalization including leading zeros, country codes, etc.
+    const phone = customerPhone.trim();
     
     // Get WooCommerce settings from database
     // Note: For webhook, we need to match by store URL or have a custom header
@@ -140,7 +135,7 @@ Thank you for shopping with us! ❤️`;
         user_id: settings.user_id,
         order_id: orderId,
         order_number: orderNumber,
-        customer_phone: phone,
+        customer_phone: phone, // Store original format
         message_sent: message,
         status: 'sent'
       }]);
@@ -224,12 +219,13 @@ router.post('/order-status-changed', async (req, res) => {
           'Hello {customer_name}!\n\nYour order #{order_number} status: {status}';
     }
     
-    const phone = (order.billing?.phone || '').replace(/[^0-9]/g, '');
+    // Validate and pass original phone number (don't format here)
+    const phone = (order.billing?.phone || '').trim();
     
     if (!phone) {
       return res.status(400).json({ 
         success: false,
-        error: 'No phone number' 
+        error: 'No phone number provided in order' 
       });
     }
     
