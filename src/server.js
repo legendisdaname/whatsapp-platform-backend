@@ -110,7 +110,8 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   console.log(`========================================`);
   console.log(`📍 Port: ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📚 API Documentation: ${process.env.API_URL || `http://localhost:${PORT}`}/api-docs`);
+  const apiUrl = process.env.API_URL || 'https://whatsapp-platform-backend.onrender.com';
+  console.log(`📚 API Documentation: ${apiUrl}/api-docs`);
   console.log(`========================================`);
   
   // Restore previous WhatsApp sessions (with delay to ensure everything is ready)

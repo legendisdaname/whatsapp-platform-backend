@@ -16,7 +16,7 @@ async function clearAdmins() {
     }
 
     console.log('✅ Admin accounts cleared successfully!');
-    console.log('Now you can test the setup flow by visiting: http://localhost:3001');
+    console.log('Now you can test the setup flow by visiting the admin panel at your configured URL');
     
   } catch (error) {
     console.error('Error:', error);
