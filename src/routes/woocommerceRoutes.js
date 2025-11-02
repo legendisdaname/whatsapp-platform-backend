@@ -34,28 +34,54 @@ function verifyWebhookSignature(payload, signature, secret) {
  */
 router.post('/order-created', async (req, res) => {
   try {
+    // Log incoming request for debugging
+    console.log('WooCommerce webhook received:', {
+      method: req.method,
+      url: req.url,
+      hasHeaders: !!req.headers,
+      headersKeys: req.headers ? Object.keys(req.headers) : [],
+      hasBody: !!req.body,
+      bodyKeys: req.body ? Object.keys(req.body) : []
+    });
+
     // Verify webhook signature (optional but recommended)
-    const signature = req.headers['x-wc-webhook-signature'];
+    // Use case-insensitive header access and ensure headers exist
+    const headers = req.headers || {};
+    const signature = headers['x-wc-webhook-signature'] || 
+                      headers['X-WC-Webhook-Signature'] ||
+                      headers['X-WC-Webhook-Signature'.toLowerCase()];
     const secret = process.env.WOOCOMMERCE_WEBHOOK_SECRET;
     
     if (secret && signature) {
-      const payload = JSON.stringify(req.body);
+      const payload = JSON.stringify(req.body || {});
       if (!verifyWebhookSignature(payload, signature, secret)) {
+        console.warn('WooCommerce webhook signature verification failed');
         return res.status(401).json({ error: 'Invalid signature' });
       }
+    } else if (secret && !signature) {
+      console.warn('WooCommerce webhook secret configured but no signature provided');
     }
     
+    // Ensure request body exists
+    if (!req.body || typeof req.body !== 'object') {
+      console.error('WooCommerce webhook: Invalid or missing request body');
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid request body' 
+      });
+    }
+
     const order = req.body;
     
-    // Extract order details
-    const orderId = order.id;
-    const orderNumber = order.number;
-    const customerName = order.billing?.first_name || 'Customer';
-    const customerPhone = order.billing?.phone;
-    const total = order.total;
-    const currency = order.currency;
-    const status = order.status;
-    const orderDate = order.date_created;
+    // Extract order details with safe defaults
+    const orderId = order?.id;
+    const orderNumber = order?.number || orderId?.toString() || 'N/A';
+    const customerName = order?.billing?.first_name || 'Customer';
+    const customerPhone = order?.billing?.phone;
+    const total = order?.total || '0';
+    const currency = order?.currency || 'USD';
+    const status = order?.status || 'unknown';
+    const orderDate = order?.date_created || new Date().toISOString();
     
     // Get order items
     let itemsList = '';
@@ -150,25 +176,54 @@ Thank you for shopping with us! ❤️`;
     });
   } catch (error) {
     console.error('WooCommerce webhook error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Request details:', {
+      hasHeaders: !!req.headers,
+      hasBody: !!req.body,
+      bodyType: req.body ? typeof req.body : 'undefined',
+      orderId: req.body?.id
+    });
     
-    // Log failed notification
-    if (req.body.id && settings?.user_id) {
-      await supabaseAdmin
-        .from('woocommerce_notifications')
-        .insert([{
-          user_id: settings.user_id,
-          order_id: req.body.id,
-          order_number: req.body.number || 'N/A',
-          customer_phone: req.body.billing?.phone || '',
-          status: 'failed',
-          error_message: error.message
-        }]);
+    // Log failed notification - safely handle req.body access
+    try {
+      const orderId = req.body?.id;
+      const orderNumber = req.body?.number;
+      const customerPhone = req.body?.billing?.phone;
+      
+      if (orderId) {
+        // Try to get settings if we can
+        try {
+          const { data: settings } = await supabaseAdmin
+            .from('woocommerce_settings')
+            .select('user_id')
+            .eq('enabled', true)
+            .limit(1)
+            .single();
+          
+          if (settings?.user_id) {
+            await supabaseAdmin
+              .from('woocommerce_notifications')
+              .insert([{
+                user_id: settings.user_id,
+                order_id: orderId.toString(),
+                order_number: orderNumber || orderId.toString(),
+                customer_phone: customerPhone || '',
+                status: 'failed',
+                error_message: error.message || 'Unknown error'
+              }]);
+          }
+        } catch (dbError) {
+          console.error('Failed to log notification error to database:', dbError);
+        }
+      }
+    } catch (logError) {
+      console.error('Error logging failed notification:', logError);
     }
     
     res.status(500).json({ 
       success: false, 
       error: 'Failed to send notification',
-      message: error.message 
+      message: error.message || 'Unknown error occurred'
     });
   }
 });
@@ -182,11 +237,22 @@ Thank you for shopping with us! ❤️`;
  */
 router.post('/order-status-changed', async (req, res) => {
   try {
+    // Ensure request body exists
+    if (!req.body || typeof req.body !== 'object') {
+      console.error('WooCommerce status-change webhook: Invalid or missing request body');
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid request body' 
+      });
+    }
+
     const order = req.body;
     
     const { data: settings } = await supabaseAdmin
       .from('woocommerce_settings')
       .select('*')
+      .eq('enabled', true)
+      .limit(1)
       .single();
     
     if (!settings) {
