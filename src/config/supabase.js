@@ -39,4 +39,50 @@ if (supabaseUrl && supabaseServiceKey) {
   console.warn('   Make sure SUPABASE_SERVICE_ROLE_KEY is set in your .env file');
 }
 
-module.exports = { supabase, supabaseAdmin };
+// Connection verification function
+async function verifySupabaseConnection() {
+  if (!supabaseAdmin) {
+    console.error('❌ Cannot verify connection: Supabase Admin client not initialized');
+    return { success: false, error: 'Admin client not initialized' };
+  }
+
+  try {
+    // Test connection by querying a simple table (sessions table is most common)
+    const { data, error, count } = await supabaseAdmin
+      .from('sessions')
+      .select('*', { count: 'exact', head: true })
+      .limit(1);
+
+    if (error) {
+      console.error('❌ Supabase connection test failed:', error.message);
+      return { 
+        success: false, 
+        error: error.message,
+        code: error.code 
+      };
+    }
+
+    console.log(`✅ Supabase connection verified successfully (found ${count || 0} session(s))`);
+    return { 
+      success: true, 
+      message: 'Connection verified',
+      sessionCount: count || 0
+    };
+  } catch (error) {
+    console.error('❌ Supabase connection test error:', error.message);
+    return { 
+      success: false, 
+      error: error.message 
+    };
+  }
+}
+
+// Verify connection on module load (async, won't block)
+if (supabaseAdmin) {
+  // Run verification after a short delay to ensure everything is ready
+  setTimeout(async () => {
+    await verifySupabaseConnection();
+  }, 1000);
+}
+
+module.exports = { supabase, supabaseAdmin, verifySupabaseConnection };

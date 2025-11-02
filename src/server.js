@@ -6,6 +6,7 @@ const swaggerSpecs = require('./config/swagger');
 const botService = require('./services/botService');
 const whatsappService = require('./services/whatsappService');
 const sessionHealthCheck = require('./services/sessionHealthCheck');
+const { verifySupabaseConnection } = require('./config/supabase');
 require('dotenv').config();
 
 const app = express();
@@ -53,12 +54,32 @@ app.use('/api/admin-test', adminTestRoutes);
 app.use('/api/admin/setup', setupRoutes);
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ 
-    success: true, 
-    message: 'WhatsApp Platform API is running',
-    timestamp: new Date().toISOString()
-  });
+app.get('/health', async (req, res) => {
+  const { checkConnectionHealth } = require('./utils/dbHelper');
+  
+  try {
+    const dbHealth = await checkConnectionHealth();
+    
+    res.json({ 
+      success: true, 
+      message: 'WhatsApp Platform API is running',
+      timestamp: new Date().toISOString(),
+      database: {
+        connected: dbHealth.healthy,
+        error: dbHealth.error || null
+      }
+    });
+  } catch (error) {
+    res.json({
+      success: true,
+      message: 'WhatsApp Platform API is running',
+      timestamp: new Date().toISOString(),
+      database: {
+        connected: false,
+        error: error.message
+      }
+    });
+  }
 });
 
 // Root endpoint
@@ -116,6 +137,24 @@ try {
   console.log(`📚 API Documentation: ${apiUrl}/api-docs`);
   console.log(`========================================`);
   
+  // Verify Supabase connection first
+  console.log('');
+  console.log('🔌 Step 0: Verifying Supabase connection...');
+  setTimeout(async () => {
+    try {
+      const connectionResult = await verifySupabaseConnection();
+      if (!connectionResult.success) {
+        console.error('⚠️  WARNING: Supabase connection verification failed!');
+        console.error('   The server will continue, but database operations may fail.');
+        console.error('   Please check your Supabase credentials in .env file');
+      } else {
+        console.log('✅ Supabase connection verified - database operations are ready');
+      }
+    } catch (error) {
+      console.error('❌ Error verifying Supabase connection:', error.message);
+    }
+  }, 1000);
+
   // Restore previous WhatsApp sessions (with delay to ensure everything is ready)
   console.log('');
   console.log('🔄 Step 1: Restoring WhatsApp sessions...');

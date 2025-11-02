@@ -3,6 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const whatsappService = require('../services/whatsappService');
 const woocommerceService = require('../services/woocommerceService');
+const PhoneValidator = require('../utils/phoneValidator');
 const { supabaseAdmin } = require('../config/supabase');
 const { authMiddleware } = require('../middleware/auth');
 const { checkBlockedMiddleware } = require('../middleware/checkBlocked');
@@ -91,17 +92,72 @@ router.post('/order-created', async (req, res) => {
       ).join('\n');
     }
     
-    // Validate phone number (don't format here - let whatsappService.handle it)
+    // Validate phone number
     if (!customerPhone || !customerPhone.trim()) {
+      console.error(`❌ WooCommerce Order #${orderNumber}: No phone number provided`);
       return res.status(400).json({ 
         success: false,
-        error: 'No phone number provided in order' 
+        error: 'No phone number provided in order',
+        order_number: orderNumber
       });
     }
     
-    // Pass the original phone number to whatsappService.sendMessage
-    // It will handle all normalization including leading zeros, country codes, etc.
-    const phone = customerPhone.trim();
+    // Get country from order (billing or shipping)
+    const countryCode = PhoneValidator.getCountryFromOrder(order);
+    console.log(`📱 WooCommerce Order #${orderNumber}: Validating phone for country: ${countryCode}`);
+    console.log(`   Original phone: ${customerPhone}`);
+    console.log(`   Billing country: ${order?.billing?.country || 'N/A'}`);
+    
+    // Validate and format phone number based on country
+    const phoneValidation = PhoneValidator.validateAndFormat(customerPhone.trim(), countryCode);
+    
+    if (!phoneValidation.isValid) {
+      console.error(`❌ WooCommerce Order #${orderNumber}: Phone validation failed`);
+      console.error(`   Phone: ${customerPhone}`);
+      console.error(`   Country: ${countryCode}`);
+      console.error(`   Error: ${phoneValidation.error}`);
+      
+      // Get settings for logging (we can't use settings variable here as it's defined later)
+      const { data: tempSettings } = await supabaseAdmin
+        .from('woocommerce_settings')
+        .select('user_id')
+        .eq('enabled', true)
+        .limit(1)
+        .single();
+      
+      // Log failed validation to database
+      await supabaseAdmin
+        .from('woocommerce_notifications')
+        .insert([{
+          user_id: tempSettings?.user_id || null,
+          order_id: orderId?.toString(),
+          order_number: orderNumber,
+          customer_phone: customerPhone,
+          status: 'failed',
+          error_message: `Phone validation failed: ${phoneValidation.error}. Country: ${countryCode}`
+        }])
+        .catch(dbError => console.error('Failed to log validation error:', dbError));
+      
+      return res.status(400).json({ 
+        success: false,
+        error: phoneValidation.error || 'Invalid phone number format',
+        details: {
+          phone: customerPhone,
+          country: countryCode,
+          suggestion: `Please ensure the phone number includes country code. For ${countryCode}, format: +[country code][number]`
+        },
+        order_number: orderNumber
+      });
+    }
+    
+    // Use validated and formatted phone number (international format without +)
+    const phone = phoneValidation.formatted;
+    
+    console.log(`✅ WooCommerce Order #${orderNumber}: Phone validated successfully`);
+    console.log(`   Original: ${phoneValidation.original}`);
+    console.log(`   Formatted: ${phone}`);
+    console.log(`   Country: ${phoneValidation.country || countryCode}`);
+    console.log(`   Country Code: +${phoneValidation.countryCallingCode}`);
     
     // Get WooCommerce settings from database
     // Note: For webhook, we need to match by store URL or have a custom header
@@ -152,8 +208,19 @@ Thank you for shopping with us! ❤️`;
       });
     }
     
-    // Send WhatsApp message
-    await whatsappService.sendMessage(sessionId, phone, message);
+    // Send WhatsApp message using the validated phone number
+    // whatsappService will handle normalization and add @c.us suffix
+    console.log(`📤 WooCommerce Order #${orderNumber}: Sending WhatsApp message`);
+    console.log(`   To: ${phone} (Country: ${phoneValidation.country || countryCode})`);
+    
+    try {
+      await whatsappService.sendMessage(sessionId, phone, message);
+      console.log(`✅ WooCommerce Order #${orderNumber}: Message sent successfully to ${phone}`);
+    } catch (sendError) {
+      console.error(`❌ WooCommerce Order #${orderNumber}: Failed to send message`);
+      console.error(`   Error: ${sendError.message}`);
+      throw sendError; // Re-throw to be caught by outer catch
+    }
     
     // Log the order notification
     await supabaseAdmin
@@ -162,10 +229,14 @@ Thank you for shopping with us! ❤️`;
         user_id: settings.user_id,
         order_id: orderId,
         order_number: orderNumber,
-        customer_phone: phone, // Store original format
+        customer_phone: phoneValidation.original, // Store original phone number
         message_sent: message,
         status: 'sent'
-      }]);
+      }])
+      .catch(dbError => {
+        console.error('Failed to log notification to database:', dbError);
+        // Don't fail the request if logging fails
+      });
     
     console.log(`WooCommerce notification sent for order #${orderNumber} to ${phone}`);
     
@@ -286,15 +357,46 @@ router.post('/order-status-changed', async (req, res) => {
           'Hello {customer_name}!\n\nYour order #{order_number} status: {status}';
     }
     
-    // Validate and pass original phone number (don't format here)
-    const phone = (order.billing?.phone || '').trim();
+    // Validate phone number with country detection
+    const customerPhone = order.billing?.phone;
     
-    if (!phone) {
+    if (!customerPhone || !customerPhone.trim()) {
+      console.error(`❌ WooCommerce Status Change: No phone number for order #${order.number}`);
       return res.status(400).json({ 
         success: false,
-        error: 'No phone number provided in order' 
+        error: 'No phone number provided in order',
+        order_number: order.number
       });
     }
+    
+    // Get country from order
+    const countryCode = PhoneValidator.getCountryFromOrder(order);
+    console.log(`📱 WooCommerce Status Change Order #${order.number}: Validating phone for country: ${countryCode}`);
+    
+    // Validate and format phone number
+    const phoneValidation = PhoneValidator.validateAndFormat(customerPhone.trim(), countryCode);
+    
+    if (!phoneValidation.isValid) {
+      console.error(`❌ WooCommerce Status Change Order #${order.number}: Phone validation failed`);
+      console.error(`   Error: ${phoneValidation.error}`);
+      
+      return res.status(400).json({ 
+        success: false,
+        error: phoneValidation.error || 'Invalid phone number format',
+        details: {
+          phone: customerPhone,
+          country: countryCode
+        },
+        order_number: order.number
+      });
+    }
+    
+    // Use validated and formatted phone number (international format without +)
+    const phone = phoneValidation.formatted;
+    console.log(`✅ WooCommerce Status Change Order #${order.number}: Phone validated`);
+    console.log(`   Original: ${phoneValidation.original}`);
+    console.log(`   Formatted: ${phone}`);
+    console.log(`   Country: ${phoneValidation.country || countryCode}`);
     
     // Build message using service
     const message = woocommerceService.buildMessage(
@@ -310,17 +412,34 @@ router.post('/order-status-changed', async (req, res) => {
       });
     }
     
-    await whatsappService.sendMessage(settings.session_id, phone, message);
+    // Send WhatsApp message using validated phone number
+    // whatsappService will handle normalization and add @c.us suffix
+    console.log(`📤 WooCommerce Status Change Order #${order.number}: Sending message`);
+    console.log(`   To: ${phone} (Country: ${phoneValidation.country || countryCode})`);
+    
+    try {
+      await whatsappService.sendMessage(settings.session_id, phone, message);
+      console.log(`✅ WooCommerce Status Change Order #${order.number}: Message sent successfully`);
+    } catch (sendError) {
+      console.error(`❌ WooCommerce Status Change Order #${order.number}: Failed to send message`);
+      console.error(`   Error: ${sendError.message}`);
+      throw sendError;
+    }
     
     await supabaseAdmin
       .from('woocommerce_notifications')
       .insert([{
-        order_id: order.id,
+        user_id: settings.user_id,
+        order_id: order.id?.toString(),
         order_number: order.number,
-        customer_phone: phone,
+        customer_phone: phoneValidation.original, // Store original phone number
         message_sent: message,
         status: 'sent'
-      }]);
+      }])
+      .catch(dbError => {
+        console.error('Failed to log notification to database:', dbError);
+        // Don't fail the request if logging fails
+      });
     
     res.json({ success: true });
   } catch (error) {
