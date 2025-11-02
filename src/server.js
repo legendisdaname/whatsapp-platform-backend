@@ -79,6 +79,20 @@ app.get('/', (req, res) => {
   });
 });
 
+// Global error handlers to prevent uncaught exceptions from crashing the server
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  console.error('Stack:', error.stack);
+  // Don't exit immediately - log the error and continue
+  // This prevents the server from crashing on unexpected errors
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise);
+  console.error('Reason:', reason);
+  // Log but don't crash - allow the server to continue
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
@@ -89,15 +103,17 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-const server = app.listen(PORT, '0.0.0.0', async () => {
+// Start server with error handling
+let server;
+try {
+  server = app.listen(PORT, '0.0.0.0', async () => {
   console.log(`========================================`);
   console.log(`🚀 WhatsApp Platform API Starting...`);
   console.log(`========================================`);
   console.log(`📍 Port: ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   const apiUrl = process.env.API_URL || 'https://whatapi.streamfinitytv.com';
-  console.log(`📚 API Documentation: ${apiUrl}/api-docs`);z
+  console.log(`📚 API Documentation: ${apiUrl}/api-docs`);
   console.log(`========================================`);
   
   // Restore previous WhatsApp sessions (with delay to ensure everything is ready)
@@ -138,7 +154,24 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   console.log('✅ Server is ready and running!');
   console.log('========================================');
   console.log('');
-});
+  });
+  
+  // Handle server errors (port in use, etc.)
+  server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${PORT} is already in use. Please use a different port.`);
+      process.exit(1);
+    } else {
+      console.error('❌ Server error:', error);
+      process.exit(1);
+    }
+  });
+} catch (error) {
+  console.error('❌ Failed to start server:', error);
+  console.error('Error details:', error.message);
+  console.error('Stack:', error.stack);
+  process.exit(1);
+}
 
 // Graceful shutdown handlers
 const gracefulShutdown = async (signal) => {
