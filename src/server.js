@@ -12,27 +12,13 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-// CORS configuration - allow production frontend and development
-const allowedOrigins = [
-  process.env.FRONTEND_URL || 'https://whatsapp.streamfinitytv.com',
-  'https://whatsapp.streamfinitytv.com'
-];
-
-// Allow multiple origins or use wildcard for development
+// CORS configuration - allow all origins for maximum compatibility
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-    
-    // Allow requests from production frontend or if origin is in allowed list
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true, // Allow all origins
   credentials: true,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'X-API-Key', 'x-wc-webhook-signature', 'X-WC-Webhook-Signature']
 };
 app.use(cors(corsOptions));
 app.use(bodyParser.json());
@@ -111,7 +97,7 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   console.log(`📍 Port: ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   const apiUrl = process.env.API_URL || 'https://whatapi.streamfinitytv.com';
-  console.log(`📚 API Documentation: ${apiUrl}/api-docs`);
+  console.log(`📚 API Documentation: ${apiUrl}/api-docs`);z
   console.log(`========================================`);
   
   // Restore previous WhatsApp sessions (with delay to ensure everything is ready)

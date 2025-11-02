@@ -163,22 +163,34 @@ class WhatsAppService {
       
       // Auto-reconnect more aggressively (only if reason is not logout)
       if (reason !== 'LOGOUT') {
-        console.log(`⏰ Scheduling reconnection for session ${sessionId} in 10 seconds...`);
+        console.log(`⏰ Scheduling reconnection for session ${sessionId} in 5 seconds...`);
         
-        // Reconnect sooner (10 seconds instead of 30) to minimize downtime
-        setTimeout(async () => {
+        // Reconnect very quickly (5 seconds) to minimize downtime
+        // Use exponential backoff for retries
+        let retryCount = 0;
+        const maxRetries = 10; // Try up to 10 times
+        
+        const attemptReconnect = async () => {
           try {
             await this.reconnectSession(sessionId);
+            retryCount = 0; // Reset on success
           } catch (error) {
-            console.error(`Failed to reconnect ${sessionId} after disconnect:`, error.message);
-            // Retry again after 2 minutes if first attempt fails
-            setTimeout(() => {
-              this.reconnectSession(sessionId).catch(err => {
-                console.error(`Second reconnect attempt failed for ${sessionId}:`, err.message);
-              });
-            }, 120000);
+            retryCount++;
+            console.error(`Failed to reconnect ${sessionId} (attempt ${retryCount}/${maxRetries}):`, error.message);
+            
+            if (retryCount < maxRetries) {
+              // Exponential backoff: 5s, 10s, 20s, 40s, 60s, then 120s for remaining attempts
+              const delay = Math.min(5000 * Math.pow(2, retryCount - 1), 120000);
+              console.log(`⏰ Retrying reconnection for ${sessionId} in ${delay/1000} seconds...`);
+              setTimeout(attemptReconnect, delay);
+            } else {
+              console.error(`❌ Max reconnection attempts reached for ${sessionId}. Will retry on next health check.`);
+              // Health check will pick it up later
+            }
           }
-        }, 10000); // 10 seconds - faster reconnection
+        };
+        
+        setTimeout(attemptReconnect, 5000); // First attempt after 5 seconds
       } else {
         console.log(`🚪 Session ${sessionId} logged out, not reconnecting automatically`);
       }
@@ -540,17 +552,40 @@ class WhatsAppService {
     } catch (error) {
       console.error(`❌ Failed to reconnect session ${sessionId}:`, error);
       
-      // Mark as disconnected
+      // Mark as disconnected but schedule aggressive retries
       await supabaseAdmin
         .from('sessions')
         .update({ status: 'disconnected' })
         .eq('id', sessionId);
       
-      // Retry after 5 minutes
-      console.log(`⏰ Will retry reconnection for ${sessionId} in 5 minutes...`);
-      setTimeout(() => {
-        this.reconnectSession(sessionId);
-      }, 300000);
+      // Use exponential backoff for reconnection attempts
+      let retryCount = 0;
+      const maxRetries = 20; // Try up to 20 times
+      
+      const scheduleRetry = () => {
+        retryCount++;
+        if (retryCount <= maxRetries) {
+          // Exponential backoff: 30s, 1m, 2m, 5m, then every 5 minutes
+          const delay = retryCount <= 3 
+            ? [30000, 60000, 120000][retryCount - 1]
+            : 300000; // 5 minutes after first 3 attempts
+          
+          console.log(`⏰ Will retry reconnection for ${sessionId} in ${delay/1000} seconds (attempt ${retryCount}/${maxRetries})...`);
+          setTimeout(async () => {
+            try {
+              await this.reconnectSession(sessionId);
+              retryCount = 0; // Reset on success
+            } catch (error) {
+              console.error(`Reconnection attempt ${retryCount} failed for ${sessionId}:`, error.message);
+              scheduleRetry(); // Continue with next attempt
+            }
+          }, delay);
+        } else {
+          console.log(`⚠️ Max reconnection attempts reached for ${sessionId}. Health check will handle further attempts.`);
+        }
+      };
+      
+      scheduleRetry();
     }
   }
 
@@ -558,8 +593,9 @@ class WhatsAppService {
     try {
       console.log('🔄 Restoring previous sessions...');
       
-      // Get all sessions that were previously connected (not just currently 'connected')
-      // This allows restoration even after server restart
+      // Get ALL sessions that have been authenticated at least once
+      // This allows restoration even after server restart, regardless of current status
+      // We restore all sessions that have phone_number (meaning they've been authenticated)
       const { data: sessions, error } = await supabaseAdmin
         .from('sessions')
         .select('*')
@@ -573,7 +609,7 @@ class WhatsAppService {
         return;
       }
       
-      console.log(`Found ${sessions.length} session(s) with saved authentication`);
+      console.log(`Found ${sessions.length} session(s) with saved authentication - restoring ALL regardless of current status`);
       
       for (const session of sessions) {
         try {
@@ -647,8 +683,9 @@ class WhatsAppService {
     // Clear any existing interval
     this.stopKeepalive(sessionId);
     
-    // More frequent ping every 20 seconds to keep connection alive
+    // More frequent ping every 15 seconds to keep connection alive
     // WhatsApp Web typically disconnects after ~30-60 seconds of inactivity
+    // We ping every 15 seconds to ensure connection stays alive
     const interval = setInterval(async () => {
       try {
         // Check if client still exists
@@ -742,16 +779,16 @@ class WhatsAppService {
             console.error(`Failed to update session status in database:`, dbError);
           });
 
-        // Attempt reconnection
-        console.log(`🔄 Attempting to reconnect session ${sessionId} after keepalive failure...`);
-        this.reconnectSession(sessionId).catch(reconnectError => {
-          console.error(`Reconnection failed:`, reconnectError.message);
-        });
+      // Attempt reconnection
+      console.log(`🔄 Attempting to reconnect session ${sessionId} after keepalive failure...`);
+      this.reconnectSession(sessionId).catch(reconnectError => {
+        console.error(`Reconnection failed:`, reconnectError.message);
+      });
       }
-    }, 20000); // Every 20 seconds - more frequent to prevent disconnection
+    }, 15000); // Every 15 seconds - very frequent to prevent disconnection
     
     this.keepaliveIntervals.set(sessionId, interval);
-    console.log(`💓 Keepalive started for session ${sessionId} (checking every 20 seconds)`);
+    console.log(`💓 Keepalive started for session ${sessionId} (checking every 15 seconds)`);
   }
   
   stopKeepalive(sessionId) {

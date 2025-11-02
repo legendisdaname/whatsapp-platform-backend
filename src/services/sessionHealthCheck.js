@@ -9,31 +9,34 @@ class SessionHealthCheck {
   }
   
   start() {
-    // Check all sessions every 5 minutes
-    this.healthCheckJob = cron.schedule('*/5 * * * *', async () => {
+    // Check all sessions every 3 minutes for faster recovery
+    // This ensures disconnected sessions are detected and reconnected quickly
+    this.healthCheckJob = cron.schedule('*/3 * * * *', async () => {
       console.log('🔍 Running session health check...');
       await this.checkAllSessions();
     });
     
-    console.log('✅ Session health check started (every 5 minutes)');
+    console.log('✅ Session health check started (every 3 minutes)');
   }
   
   async checkAllSessions() {
     try {
-      // Get all sessions that should be connected
+      // Get ALL sessions that have been authenticated before (have phone_number)
+      // This includes disconnected sessions - we'll try to reconnect them
       const { data: sessions, error } = await supabaseAdmin
         .from('sessions')
         .select('*')
-        .in('status', ['connected', 'connecting']);
+        .not('phone_number', 'is', null) // Only sessions that have been authenticated
+        .in('status', ['connected', 'connecting', 'disconnected']); // Include disconnected too
       
       if (error) throw error;
       
       if (sessions.length === 0) {
-        console.log('No active sessions to check');
+        console.log('No authenticated sessions to check');
         return;
       }
       
-      console.log(`Checking ${sessions.length} session(s)...`);
+      console.log(`Checking ${sessions.length} session(s) (including disconnected ones for auto-reconnect)...`);
       
       for (const session of sessions) {
         await this.checkSession(session);
@@ -47,14 +50,16 @@ class SessionHealthCheck {
     try {
       const client = whatsappService.getClient(session.id);
       
-      // No client instance found
+      // No client instance found - try to restore regardless of status
       if (!client) {
         console.log(`⚠️ Session ${session.session_name} has no client instance`);
         
-        // If marked as connected but no client, try to restore
-        if (session.status === 'connected') {
-          console.log(`🔄 Attempting to restore session ${session.id}...`);
-          await whatsappService.reconnectSession(session.id);
+        // If session has been authenticated before (has phone_number), always try to restore
+        if (session.phone_number) {
+          console.log(`🔄 Attempting to restore session ${session.id} (was authenticated before)...`);
+          await whatsappService.reconnectSession(session.id).catch(error => {
+            console.error(`Failed to restore session ${session.id}:`, error.message);
+          });
         }
         return;
       }
@@ -65,6 +70,26 @@ class SessionHealthCheck {
       if (state === 'CONNECTED') {
         console.log(`✅ Session ${session.session_name} is healthy`);
         this.reconnectAttempts.delete(session.id); // Reset attempts
+        
+        // Update status if it was marked as disconnected
+        if (session.status !== 'connected') {
+          await supabaseAdmin
+            .from('sessions')
+            .update({ 
+              status: 'connected',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', session.id);
+        }
+        return;
+      }
+      
+      // If state is DISCONNECTED or OPENING, try to reconnect
+      if (state === 'DISCONNECTED' || state === 'OPENING') {
+        console.log(`⚠️ Session ${session.session_name} is ${state}, attempting reconnection...`);
+        await whatsappService.reconnectSession(session.id).catch(error => {
+          console.error(`Health check reconnection failed for ${session.id}:`, error.message);
+        });
         return;
       }
       
