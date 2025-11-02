@@ -63,6 +63,66 @@ const options = {
             error: { type: 'string' },
             message: { type: 'string' }
           }
+        },
+        WooCommerceSettings: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            user_id: { type: 'string', format: 'uuid' },
+            store_url: { type: 'string' },
+            consumer_key: { type: 'string' },
+            consumer_secret: { type: 'string' },
+            session_id: { type: 'string', format: 'uuid' },
+            order_created_template: { type: 'string' },
+            order_processing_template: { type: 'string' },
+            order_completed_template: { type: 'string' },
+            enabled: { type: 'boolean' },
+            created_at: { type: 'string', format: 'date-time' },
+            updated_at: { type: 'string', format: 'date-time' }
+          }
+        },
+        WooCommerceNotification: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            user_id: { type: 'string', format: 'uuid' },
+            order_id: { type: 'string' },
+            order_number: { type: 'string' },
+            customer_phone: { type: 'string' },
+            message_sent: { type: 'string' },
+            status: { type: 'string', enum: ['sent', 'failed'] },
+            error_message: { type: 'string', nullable: true },
+            created_at: { type: 'string', format: 'date-time' }
+          }
+        },
+        WooCommerceOrder: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer' },
+            number: { type: 'string' },
+            status: { type: 'string' },
+            currency: { type: 'string' },
+            total: { type: 'string' },
+            date_created: { type: 'string', format: 'date-time' },
+            billing: {
+              type: 'object',
+              properties: {
+                first_name: { type: 'string' },
+                last_name: { type: 'string' },
+                phone: { type: 'string' }
+              }
+            },
+            line_items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  quantity: { type: 'integer' }
+                }
+              }
+            }
+          }
         }
       }
     }

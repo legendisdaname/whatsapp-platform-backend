@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const whatsappService = require('../services/whatsappService');
+const woocommerceService = require('../services/woocommerceService');
 const { supabaseAdmin } = require('../config/supabase');
 const { authMiddleware } = require('../middleware/auth');
 const { checkBlockedMiddleware } = require('../middleware/checkBlocked');
@@ -115,15 +116,15 @@ We'll keep you updated on your order status!
 Thank you for shopping with us! ❤️`;
     }
     
-    // Process message template
-    let message = messageTemplate
-      .replace(/\{customer_name\}/g, customerName)
-      .replace(/\{order_number\}/g, orderNumber)
-      .replace(/\{total\}/g, total)
-      .replace(/\{currency\}/g, currency)
-      .replace(/\{status\}/g, status)
-      .replace(/\{order_date\}/g, orderDate || new Date().toISOString())
-      .replace(/\{items\}/g, itemsList || 'N/A');
+    // Process message template using service
+    const message = woocommerceService.buildMessage(messageTemplate, order, customerName);
+    
+    if (!message) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Message template not configured' 
+      });
+    }
     
     // Send WhatsApp message
     await whatsappService.sendMessage(sessionId, phone, message);
@@ -229,12 +230,19 @@ router.post('/order-status-changed', async (req, res) => {
       });
     }
     
-    const message = messageTemplate
-      .replace(/\{customer_name\}/g, order.billing?.first_name || 'Customer')
-      .replace(/\{order_number\}/g, order.number)
-      .replace(/\{status\}/g, order.status)
-      .replace(/\{total\}/g, order.total)
-      .replace(/\{currency\}/g, order.currency);
+    // Build message using service
+    const message = woocommerceService.buildMessage(
+      messageTemplate, 
+      order, 
+      order.billing?.first_name || 'Customer'
+    );
+    
+    if (!message) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Message template not configured' 
+      });
+    }
     
     await whatsappService.sendMessage(settings.session_id, phone, message);
     
@@ -434,6 +442,139 @@ router.post('/test', async (req, res) => {
     );
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/woocommerce/verify:
+ *   post:
+ *     summary: Verify WooCommerce store connection
+ *     tags: [WooCommerce]
+ */
+router.post('/verify', authMiddleware, async (req, res) => {
+  try {
+    const { store_url, consumer_key, consumer_secret } = req.body;
+    
+    if (!store_url || !consumer_key || !consumer_secret) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'store_url, consumer_key, and consumer_secret are required' 
+      });
+    }
+    
+    const result = await woocommerceService.verifyConnection(
+      store_url, 
+      consumer_key, 
+      consumer_secret
+    );
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Verification error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Verification failed' 
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/woocommerce/orders:
+ *   get:
+ *     summary: Get orders from WooCommerce store
+ *     tags: [WooCommerce]
+ */
+router.get('/orders', authMiddleware, async (req, res) => {
+  try {
+    const { limit = 10, status = 'any' } = req.query;
+    
+    // Get user's WooCommerce settings
+    const { data: settings, error: settingsError } = await supabaseAdmin
+      .from('woocommerce_settings')
+      .select('*')
+      .eq('user_id', req.userId)
+      .single();
+    
+    if (settingsError || !settings) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'WooCommerce settings not found. Please configure integration first.' 
+      });
+    }
+    
+    if (!settings.store_url || !settings.consumer_key || !settings.consumer_secret) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Store credentials not configured. Please add Consumer Key and Secret.' 
+      });
+    }
+    
+    const result = await woocommerceService.listOrders(
+      settings.store_url,
+      settings.consumer_key,
+      settings.consumer_secret,
+      parseInt(limit),
+      status
+    );
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Get orders error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to fetch orders' 
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/woocommerce/orders/:orderId:
+ *   get:
+ *     summary: Get specific order from WooCommerce store
+ *     tags: [WooCommerce]
+ */
+router.get('/orders/:orderId', authMiddleware, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    
+    // Get user's WooCommerce settings
+    const { data: settings, error: settingsError } = await supabaseAdmin
+      .from('woocommerce_settings')
+      .select('*')
+      .eq('user_id', req.userId)
+      .single();
+    
+    if (settingsError || !settings) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'WooCommerce settings not found' 
+      });
+    }
+    
+    if (!settings.store_url || !settings.consumer_key || !settings.consumer_secret) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Store credentials not configured' 
+      });
+    }
+    
+    const result = await woocommerceService.getOrder(
+      settings.store_url,
+      settings.consumer_key,
+      settings.consumer_secret,
+      orderId
+    );
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Get order error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to fetch order' 
+    });
   }
 });
 
